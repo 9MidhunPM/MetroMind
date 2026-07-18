@@ -8,15 +8,23 @@ Users can plan complex trips, share live GPS locations, book real tickets, save 
 
 ## ✨ Key Features
 
+### 🧠 Agentic AI Brain
+Powered by advanced LLMs (like OpenRouter GPT-4 / NVIDIA Nemotron). The agent maintains conversational memory and autonomously decides which internal "Tools" to call based on the user's intent. It has complete awareness of its capabilities and seamlessly routes requests.
+<br>
+![Agent Purpose Demo](assets/agent_purpose_demo.png)
+
 ### 🗺️ Intelligent Route Planning
 Calculates the fastest route, travel times, fares, and the exact next train departure times using static GTFS data. Users can share their live WhatsApp location to instantly find the closest station.
 <br>
 ![Trip Planner Demo](assets/trip_planner_demo.png)
 
-### 🎫 Live Ticket Booking
-Automates the KMRL ticket booking portal via a Selenium-powered Python backend. It securely negotiates the booking flow and returns a direct payment link to the user on WhatsApp.
+### 🎫 Live Ticket Booking & Seamless Payments
+Automates the KMRL ticket booking portal via a Selenium-powered Python backend. It securely negotiates the booking flow and returns a direct payment link to the user on WhatsApp. Users can securely pay using Google Pay or their preferred UPI app directly from their phone.
 <br>
 ![Booking Demo](assets/booking_demo.png)
+<br>
+<img src="assets/payment_gateway_demo.jpg" width="45%" style="display:inline-block; margin-right:5%;" alt="Payment Gateway UI">
+<img src="assets/gpay_upi_demo.jpg" width="45%" style="display:inline-block;" alt="Google Pay UPI Flow">
 
 ### ⏰ Smart Commute Reminders
 Users can ask the agent to "save my commute" (e.g., *Aluva to MG Road every weekday at 9:00 AM*). A scheduled engine continuously checks these profiles and sends a proactive push notification to the user's WhatsApp 15 minutes before departure, complete with live weather and train times.
@@ -27,9 +35,8 @@ Users can ask the agent to "save my commute" (e.g., *Aluva to MG Road every week
 Generates highly personalized day-trip itineraries. Whether a user has a "half-day for shopping" or a "full-day for history", MetroMind calculates travel times between key Kochi attractions and builds a seamless travel schedule with Google Maps integration.
 <br>
 ![Tourist Demo](assets/tourist_demo.png)
-
-### 🧠 Agentic AI Brain
-Powered by advanced LLMs (like OpenRouter GPT-4 / NVIDIA Nemotron). The agent maintains conversational memory and autonomously decides which internal "Tools" to call based on the user's intent.
+<br>
+![Tourist Maps Route](assets/tourist_maps_demo.png)
 
 ---
 
