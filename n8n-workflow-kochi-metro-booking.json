@@ -1,0 +1,399 @@
+{
+  "name": "Kochi Metro WhatsApp Booking",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twilio-whatsapp-webhook",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "name": "Twilio WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "kochi-metro-booking",
+      "notes": "Receives incoming WhatsApp messages from Twilio.\nTwilio sends POST with form-urlencoded body containing:\n- Body: message text\n- From: sender number (whatsapp:+91...)\n- To: your Twilio WhatsApp number\n\nConfigure this webhook URL in your Twilio WhatsApp Sandbox:\nhttps://<your-n8n-domain>/webhook/twilio-whatsapp-webhook"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Extract Kochi Metro booking URL from the incoming WhatsApp message\n// Twilio sends WhatsApp data as form-urlencoded body\nconst body = $input.first().json.body;\n\n// Handle both direct body access and nested body from webhook\nconst messageBody = body.Body || body.body || '';\nconst senderNumber = body.From || body.from || '';\nconst recipientNumber = body.To || body.to || '';\n\n// Log for debugging\nconsole.log('Incoming message:', messageBody);\nconsole.log('From:', senderNumber);\nconsole.log('To:', recipientNumber);\n\n// Regex to extract Kochi Metro booking URL\n// Matches: https://prutech.org/KMRL/#/manage/ticket/<anything>\nconst urlRegex = /https?:\\/\\/prutech\\.org\\/KMRL\\/#\\/manage\\/ticket\\/[A-Za-z0-9_-]+/g;\nconst matches = messageBody.match(urlRegex);\n\nif (!matches || matches.length === 0) {\n  // No valid URL found — return error flag\n  return [{\n    json: {\n      hasValidUrl: false,\n      error: \"Couldn't find a valid Kochi Metro booking link.\",\n      senderNumber: senderNumber,\n      recipientNumber: recipientNumber,\n      rawMessage: messageBody\n    }\n  }];\n}\n\n// Use the first matching URL\nconst bookingUrl = matches[0];\n\n// Remove the URL from the message to get remaining text for journey parsing\nconst remainingText = messageBody.replace(urlRegex, '').trim();\n\nreturn [{\n  json: {\n    hasValidUrl: true,\n    bookingUrl: bookingUrl,\n    remainingText: remainingText,\n    rawMessage: messageBody,\n    senderNumber: senderNumber,\n    recipientNumber: recipientNumber\n  }\n}];"
+      },
+      "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+      "name": "Extract Booking URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "notes": "Extracts the Kochi Metro booking URL from the WhatsApp message.\nPattern: https://prutech.org/KMRL/#/manage/ticket/*\nIf no URL found, sets hasValidUrl=false for error handling downstream."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "url-check-condition",
+              "leftValue": "={{ $json.hasValidUrl }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
+      "name": "Has Valid URL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [700, 300],
+      "notes": "Checks if a valid Kochi Metro booking URL was found.\nTrue → Continue to journey extraction.\nFalse → Send error reply via WhatsApp."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Parse journey details from the remaining message text\n// Supports multiple formats:\n// - \"from X to Y\" / \"X -> Y\" / \"X to Y\"\n// - \"N passengers\" / \"for N people\" / \"N ticket(s)\"\n// - Line-by-line: origin, destination, passengers\n\nconst data = $input.first().json;\nconst text = data.remainingText || '';\n\nlet origin = null;\nlet destination = null;\nlet passengers = null;\n\n// ===== PASSENGER EXTRACTION =====\n// Number words mapping\nconst numberWords = {\n  'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,\n  'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10\n};\n\n// Try: \"N passengers\", \"N people\", \"N ticket(s)\", \"for N\"\nconst passengerPatterns = [\n  /(\\d+)\\s*(?:passengers?|people|persons?|ticket[s]?|pax)/i,\n  /(?:for|with)\\s+(\\d+)\\s*(?:passengers?|people|persons?|ticket[s]?|pax)?/i,\n  /(one|two|three|four|five|six|seven|eight|nine|ten)\\s*(?:passengers?|people|persons?|ticket[s]?|pax)/i,\n  /(?:for|with)\\s+(one|two|three|four|five|six|seven|eight|nine|ten)/i\n];\n\nfor (const pattern of passengerPatterns) {\n  const match = text.match(pattern);\n  if (match) {\n    const val = match[1];\n    passengers = numberWords[val.toLowerCase()] || parseInt(val, 10);\n    if (!isNaN(passengers) && passengers > 0) break;\n    passengers = null;\n  }\n}\n\n// ===== STATION EXTRACTION =====\n// Known Kochi Metro stations for fuzzy matching\nconst stations = [\n  'Aluva', 'Pulinchodu', 'Companypady', 'Ambattukavu', 'Muttom',\n  'Kalamassery', 'CUSAT', 'Pathadipalam', 'Edappally', 'Changampuzha Park',\n  'Palarivattom', 'JLN Stadium', 'Kaloor', 'Town Hall', 'MG Road',\n  'Maharajas College', 'Ernakulam South', 'Kadavanthra', 'Elamkulam',\n  'Vyttila', 'Thaikoodam', 'Pettah', 'Vadakkekotta', 'SN Junction',\n  'Thrippunithura', 'Eroor', 'Chottanikkara'\n];\n\n// Helper: find best matching station name (case-insensitive)\nfunction findStation(input) {\n  if (!input) return null;\n  const clean = input.trim();\n  // Exact match (case-insensitive)\n  const exact = stations.find(s => s.toLowerCase() === clean.toLowerCase());\n  if (exact) return exact;\n  // Partial match\n  const partial = stations.find(s => s.toLowerCase().includes(clean.toLowerCase()) || clean.toLowerCase().includes(s.toLowerCase()));\n  if (partial) return partial;\n  // If no match in known stations, return as-is (preserve user input)\n  return clean;\n}\n\n// Try pattern: \"from X to Y\"\nconst fromToPattern = /(?:from|travel from|travelling from)\\s+(.+?)\\s+(?:to|->|→|–)\\s+(.+?)(?:\\s+(?:with|for|,|$))/i;\nconst fromToMatch = text.match(fromToPattern);\n\nif (fromToMatch) {\n  origin = findStation(fromToMatch[1]);\n  destination = findStation(fromToMatch[2].replace(/\\s*(with|for|,|\\d+).*$/i, '').trim());\n}\n\n// Try pattern: \"X to Y\" / \"X -> Y\" / \"X → Y\" (without 'from')\nif (!origin || !destination) {\n  const simpleToPattern = /([A-Za-z\\s]+?)\\s*(?:to|->|→|–)\\s*([A-Za-z\\s]+?)(?:\\s*(?:with|for|,|\\d+|$))/i;\n  const simpleMatch = text.match(simpleToPattern);\n  if (simpleMatch) {\n    const candidateOrigin = simpleMatch[1].replace(/^(?:book|travel|go|heading)\\s*/i, '').trim();\n    const candidateDest = simpleMatch[2].replace(/\\s*(with|for|,|\\d+).*$/i, '').trim();\n    if (candidateOrigin && candidateDest) {\n      origin = origin || findStation(candidateOrigin);\n      destination = destination || findStation(candidateDest);\n    }\n  }\n}\n\n// Try line-by-line format (origin on one line, destination on next)\nif (!origin || !destination) {\n  const lines = text.split(/\\n/).map(l => l.trim()).filter(l => l && !l.match(/^(book|this|please|hi|hello|hey)/i) && !l.match(/\\d+\\s*(passengers?|people|ticket)/i));\n  if (lines.length >= 2) {\n    origin = origin || findStation(lines[0]);\n    destination = destination || findStation(lines[1]);\n  } else if (lines.length === 1) {\n    // Single station mentioned — could be destination\n    const singleStation = findStation(lines[0]);\n    if (singleStation && stations.some(s => s.toLowerCase() === singleStation.toLowerCase())) {\n      destination = destination || singleStation;\n    }\n  }\n}\n\n// ===== APPLY DEFAULTS =====\norigin = origin || 'Aluva';\ndestination = destination || 'Palarivattom';\npassengers = passengers || 1;\n\n// Ensure passengers is a valid positive integer\npassengers = Math.max(1, Math.min(10, Math.floor(passengers)));\n\nconsole.log('Parsed journey:', { origin, destination, passengers });\n\nreturn [{\n  json: {\n    url: data.bookingUrl,\n    origin: origin,\n    destination: destination,\n    passengers: passengers,\n    senderNumber: data.senderNumber,\n    recipientNumber: data.recipientNumber,\n    rawMessage: data.rawMessage\n  }\n}];"
+      },
+      "id": "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a",
+      "name": "Parse Journey Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 200],
+      "notes": "Parses origin, destination, and passenger count from the message text.\nSupports multiple formats:\n- 'from X to Y'\n- 'X -> Y' / 'X → Y'\n- 'X to Y'\n- Line-by-line (origin, destination, passengers)\n- 'N passengers' / 'for N people' / 'one ticket'\n\nDefaults: Aluva → Palarivattom, 1 passenger.\nIncludes known Kochi Metro station names for fuzzy matching."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mindmetroapi.midhunapi.me/book",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.url, origin: $json.origin, destination: $json.destination, passengers: $json.passengers }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b",
+      "name": "Book Kochi Metro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1200, 200],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput",
+      "notes": "Calls the Kochi Metro booking API.\nPOST https://mindmetroapi.midhunapi.me/book\nBody: { url, origin, destination, passengers }\n\nRetries once on failure (network issues).\nTimeout: 30 seconds.\nErrors route to the error output for graceful handling."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "success-check-condition",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c",
+      "name": "Booking Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1440, 200],
+      "notes": "Checks if the booking API returned success: true.\nTrue → Extract payment URL and send success reply.\nFalse → Extract error message and send failure reply."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Build the success WhatsApp reply message\nconst apiResponse = $input.first().json;\nconst journeyData = $('Parse Journey Details').first().json;\n\n// Extract the payment/deeplink URL from the API response\nconst paymentUrl = apiResponse.payment_url || apiResponse.url || apiResponse.deeplink || '';\n\nlet message;\nif (paymentUrl) {\n  message = `🚇 *Your Kochi Metro booking is ready!*\\n\\n` +\n    `🔹 *Route:* ${journeyData.origin} → ${journeyData.destination}\\n` +\n    `🔹 *Passengers:* ${journeyData.passengers}\\n\\n` +\n    `💳 *Pay here:*\\n${paymentUrl}`;\n} else {\n  // API returned success but no URL — unusual, still report\n  message = `🚇 *Kochi Metro booking processed!*\\n\\n` +\n    `🔹 *Route:* ${journeyData.origin} → ${journeyData.destination}\\n` +\n    `🔹 *Passengers:* ${journeyData.passengers}\\n\\n` +\n    `⚠️ No payment URL returned. Please check the metro app.`;\n}\n\nreturn [{\n  json: {\n    message: message,\n    senderNumber: journeyData.senderNumber,\n    recipientNumber: journeyData.recipientNumber\n  }\n}];"
+      },
+      "id": "a7b8c9d0-e1f2-4a3b-4c5d-6e7f8a9b0c1d",
+      "name": "Build Success Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 100],
+      "notes": "Builds the WhatsApp success reply message with the payment URL.\nIncludes route details and passenger count for confirmation."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Build the failure WhatsApp reply message\nconst apiResponse = $input.first().json;\nconst journeyData = $('Parse Journey Details').first().json;\n\n// Extract error message\nconst errorMsg = apiResponse.error || apiResponse.message || 'Unknown error occurred';\n\nconst message = `❌ *Booking failed*\\n\\n` +\n  `🔹 *Route:* ${journeyData.origin} → ${journeyData.destination}\\n` +\n  `🔹 *Passengers:* ${journeyData.passengers}\\n\\n` +\n  `⚠️ *Error:* ${errorMsg}\\n\\n` +\n  `Please try again or contact support.`;\n\nreturn [{\n  json: {\n    message: message,\n    senderNumber: journeyData.senderNumber,\n    recipientNumber: journeyData.recipientNumber\n  }\n}];"
+      },
+      "id": "b8c9d0e1-f2a3-4b4c-5d6e-7f8a9b0c1d2e",
+      "name": "Build Failure Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 320],
+      "notes": "Builds the WhatsApp failure reply message.\nIncludes the error message from the API response."
+    },
+    {
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.recipientNumber }}",
+        "to": "={{ $json.senderNumber }}",
+        "toWhatsapp": true,
+        "message": "={{ $json.message }}"
+      },
+      "id": "c9d0e1f2-a3b4-4c5d-6e7f-8a9b0c1d2e3f",
+      "name": "Send Success WhatsApp",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1960, 100],
+      "notes": "Sends the booking success + payment URL back to the user via WhatsApp.\nUses the original sender's number as the recipient.\n'From' is your Twilio WhatsApp number (received as 'To' in the incoming webhook)."
+    },
+    {
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.recipientNumber }}",
+        "to": "={{ $json.senderNumber }}",
+        "toWhatsapp": true,
+        "message": "={{ $json.message }}"
+      },
+      "id": "d0e1f2a3-b4c5-4d6e-7f8a-9b0c1d2e3f4a",
+      "name": "Send Failure WhatsApp",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1960, 320],
+      "notes": "Sends the booking failure error message back to the user via WhatsApp."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Build error reply when no valid booking URL was found\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    message: \"❌ *Couldn't find a valid Kochi Metro booking link.*\\n\\nPlease send a message containing a valid booking URL like:\\nhttps://prutech.org/KMRL/#/manage/ticket/ABC123\\n\\nYou can optionally include journey details:\\n• From [origin] to [destination]\\n• Number of passengers\",\n    senderNumber: data.senderNumber,\n    recipientNumber: data.recipientNumber\n  }\n}];"
+      },
+      "id": "e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b",
+      "name": "Build No URL Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 440],
+      "notes": "Builds a helpful error message when no valid booking URL was found in the incoming message."
+    },
+    {
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.recipientNumber }}",
+        "to": "={{ $json.senderNumber }}",
+        "toWhatsapp": true,
+        "message": "={{ $json.message }}"
+      },
+      "id": "f2a3b4c5-d6e7-4f8a-9b0c-1d2e3f4a5b6c",
+      "name": "Send No URL WhatsApp",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1200, 440],
+      "notes": "Sends the 'no valid URL found' error reply back to the user via WhatsApp."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Handle HTTP Request errors (network failures, API down, etc.)\nconst journeyData = $('Parse Journey Details').first().json;\nconst errorData = $input.first().json;\n\nconst errorMsg = errorData.error || errorData.message || errorData.statusMessage || 'The booking service is temporarily unavailable';\n\nconst message = `❌ *Booking request failed*\\n\\n` +\n  `🔹 *Route:* ${journeyData.origin} → ${journeyData.destination}\\n` +\n  `🔹 *Passengers:* ${journeyData.passengers}\\n\\n` +\n  `⚠️ *Error:* ${errorMsg}\\n\\n` +\n  `The booking service may be temporarily down. Please try again in a few minutes.`;\n\nreturn [{\n  json: {\n    message: message,\n    senderNumber: journeyData.senderNumber,\n    recipientNumber: journeyData.recipientNumber\n  }\n}];"
+      },
+      "id": "a3b4c5d6-e7f8-4a9b-0c1d-2e3f4a5b6c7d",
+      "name": "Build HTTP Error Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 440],
+      "notes": "Handles cases where the HTTP request to the booking API itself failed\n(e.g., timeout, network error, API unreachable).\nBuilds a user-friendly error message."
+    },
+    {
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.recipientNumber }}",
+        "to": "={{ $json.senderNumber }}",
+        "toWhatsapp": true,
+        "message": "={{ $json.message }}"
+      },
+      "id": "b4c5d6e7-f8a9-4b0c-1d2e-3f4a5b6c7d8e",
+      "name": "Send HTTP Error WhatsApp",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1700, 440],
+      "notes": "Sends the HTTP error message back to the user via WhatsApp."
+    }
+  ],
+  "connections": {
+    "Twilio WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Booking URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Booking URL": {
+      "main": [
+        [
+          {
+            "node": "Has Valid URL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid URL?": {
+      "main": [
+        [
+          {
+            "node": "Parse Journey Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build No URL Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Journey Details": {
+      "main": [
+        [
+          {
+            "node": "Book Kochi Metro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Book Kochi Metro": {
+      "main": [
+        [
+          {
+            "node": "Booking Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build HTTP Error Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking Successful?": {
+      "main": [
+        [
+          {
+            "node": "Build Success Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Failure Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Success Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Success WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Failure Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Failure WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build No URL Reply": {
+      "main": [
+        [
+          {
+            "node": "Send No URL WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HTTP Error Reply": {
+      "main": [
+        [
+          {
+            "node": "Send HTTP Error WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "WhatsApp"
+    },
+    {
+      "name": "Kochi Metro"
+    },
+    {
+      "name": "Booking"
+    }
+  ],
+  "pinData": {},
+  "meta": {
+    "instanceId": "",
+    "templateCredsSetupCompleted": false
+  }
+}
