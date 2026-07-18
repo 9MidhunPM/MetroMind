@@ -1,0 +1,135 @@
+{
+  "updatedAt": "2026-07-18T19:52:38.146Z",
+  "createdAt": "2026-07-18T19:52:38.146Z",
+  "id": "Ca1dELVyqbcpzUkZ",
+  "name": "Tool: Commute Manager V2",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "action",
+              "type": "string"
+            },
+            {
+              "name": "commute_origin",
+              "type": "string"
+            },
+            {
+              "name": "commute_destination",
+              "type": "string"
+            },
+            {
+              "name": "commute_time",
+              "type": "string"
+            },
+            {
+              "name": "commute_days",
+              "type": "string"
+            },
+            {
+              "name": "phoneNumber",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "1",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Execute Workflow Trigger').first().json;\nconst action = String(input.action || '').toLowerCase();\nconst phone = input.phoneNumber;\n\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.profiles) staticData.profiles = {};\n\nif (action === 'cancel' || action === 'delete' || action === 'stop') {\n  if (staticData.profiles[phone]) {\n    delete staticData.profiles[phone];\n    return [{ json: { replyMessage: \"✅ Your commute reminder has been cancelled. Send 'save my commute' anytime to set it up again.\" } }];\n  } else {\n    return [{ json: { replyMessage: \"You don't have a saved commute. Send 'save my commute' to set one up!\" } }];\n  }\n}\n\n// Save flow\nconst origin = input.commute_origin || 'Unknown';\nconst destination = input.commute_destination || 'Unknown';\nconst commuteTime = input.commute_time || '09:00'; // fallback\n\nlet days = input.commute_days;\nif (typeof days === 'string') {\n  try { days = JSON.parse(days); } catch(e) { days = days.split(',').map(s=>s.trim()); }\n}\nif (!Array.isArray(days) || days.length === 0) days = [\"Monday\",\"Tuesday\",\"Wednesday\",\"Thursday\",\"Friday\"]; // default\n\nconst parts = commuteTime.split(\":\").map(Number);\nconst h = parts[0] || 9;\nconst m = parts[1] || 0;\nconst reminderMins = h * 60 + m - 15;\nlet finalH = Math.floor(reminderMins / 60);\nlet finalM = reminderMins % 60;\nif (reminderMins < 0) {\n    finalH = Math.floor((24 * 60 + reminderMins) / 60);\n    finalM = (24 * 60 + reminderMins) % 60;\n}\nconst reminderTime = `${String(finalH).padStart(2,\"0\")}:${String(finalM).padStart(2,\"0\")}`;\n\nstaticData.profiles[phone] = {\n  origin,\n  destination,\n  commute_time: commuteTime,\n  reminder_time: reminderTime,\n  days,\n  saved_at: new Date().toISOString()\n};\n\nconst replyMessage = `✅ *Commute saved!*\\n\\n🚇 ${origin} → ${destination}\\n📅 ${days.join(\", \")}\\n⏰ Reminder at ${reminderTime} (15 min before your ${commuteTime} commute)\\n\\nI'll send you your trip plan automatically. You can update this anytime by saying \"save my commute\" again.`;\n\nreturn [{ json: { replyMessage } }];"
+      },
+      "id": "2",
+      "name": "Handle Commute",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Handle Commute",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true
+  },
+  "staticData": {
+    "global": {
+      "profiles": {
+        "+918217267367": {
+          "origin": "Aluva",
+          "destination": "Lulu Mall",
+          "commute_time": "09:00",
+          "reminder_time": "08:45",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "saved_at": "2026-07-18T20:07:43.796Z"
+        }
+      }
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "1fa83f88-3ff1-4549-a39c-025a685a94e6",
+  "activeVersionId": "1fa83f88-3ff1-4549-a39c-025a685a94e6",
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "shared": [
+    {
+      "updatedAt": "2026-07-18T19:52:38.150Z",
+      "createdAt": "2026-07-18T19:52:38.150Z",
+      "role": "workflow:owner",
+      "workflowId": "Ca1dELVyqbcpzUkZ",
+      "projectId": "sJbRQ0D9Xds02Xje",
+      "project": {
+        "updatedAt": "2026-07-13T09:24:08.945Z",
+        "createdAt": "2026-07-13T09:07:47.549Z",
+        "id": "sJbRQ0D9Xds02Xje",
+        "name": "Midhum P M <midhun.titan@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+      }
+    }
+  ],
+  "tags": []
+}

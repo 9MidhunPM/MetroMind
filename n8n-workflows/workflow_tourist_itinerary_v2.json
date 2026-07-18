@@ -1,0 +1,86 @@
+{
+  "updatedAt": "2026-07-18T20:14:37.904Z",
+  "createdAt": "2026-07-18T20:14:37.904Z",
+  "id": "gl0iBxoh889o5mRe",
+  "name": "Tool: Tourist Itinerary V2",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "11111111-4444-5555-6666-777777777777",
+      "name": "Execute Workflow Trigger",
+      "parameters": {},
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1
+    },
+    {
+      "id": "22222222-4444-5555-6666-777777777777",
+      "name": "Generate Itinerary",
+      "parameters": {
+        "jsCode": "const intent = $('Execute Workflow Trigger').first().json || {};\n\n// If we don't have both hours and preference, ask for them\nif (!intent.tourist_hours || !intent.tourist_preference) {\n  let question = \"🌴 Welcome to Kochi! I'll build you a personalised metro day trip.\\n\\n\";\n  \n  if (!intent.tourist_hours && !intent.tourist_preference) {\n    question += \"Quick question — how long do you have and what do you enjoy?\\n\\nReply like: _full day, history and food_ or _4 hours, shopping_\";\n  } else if (!intent.tourist_hours) {\n    question += \"How long do you have — half day (3-4 hrs) or full day (6+ hrs)?\";\n  } else {\n    question += \"What do you enjoy most?\\n1️⃣ History & Heritage\\n2️⃣ Food & Local Markets\\n3️⃣ Shopping\\n4️⃣ Mix of everything\";\n  }\n  \n  return [{ json: { result: question } }];\n}\n\n// We have both — build the itinerary\nconst ATTRACTIONS = {\n  \"Aluva\": {\n    name: \"Aluva Manapuram & Sivarathri Festival Grounds\",\n    description: \"Sacred river bank, historic Shiva temple\",\n    walk: \"5 min\",\n    best_time: \"morning\",\n    category: \"history\",\n    duration: 45\n  },\n  \"Kalamassery\": {\n    name: \"Cochin Special Economic Zone\",\n    description: \"Modern Kerala industrial hub\",\n    walk: \"10 min\",\n    best_time: \"morning\",\n    category: \"mix\",\n    duration: 30\n  },\n  \"Edapally\": {\n    name: \"LuLu Mall\",\n    description: \"Largest mall in India — food court, shops, entertainment\",\n    walk: \"5 min\",\n    best_time: \"afternoon\",\n    category: \"shopping\",\n    duration: 120\n  },\n  \"Palarivattom\": {\n    name: \"Palarivattom Junction & Local Markets\",\n    description: \"Buzzing local market, street food heaven\",\n    walk: \"2 min\",\n    best_time: \"evening\",\n    category: \"food\",\n    duration: 60\n  },\n  \"JLN Stadium\": {\n    name: \"Jawaharlal Nehru Stadium\",\n    description: \"Iconic sports venue and surrounding park\",\n    walk: \"3 min\",\n    best_time: \"morning\",\n    category: \"mix\",\n    duration: 30\n  },\n  \"MG Road\": {\n    name: \"Marine Drive\",\n    description: \"Iconic Kochi waterfront promenade, perfect for evening walks\",\n    walk: \"5 min\",\n    best_time: \"evening\",\n    category: \"sightseeing\",\n    duration: 60\n  },\n  \"Ernakulam South\": {\n    name: \"Jew Town & Mattancherry Palace\",\n    description: \"500-year-old spice market, Dutch Palace murals, antique shops\",\n    walk: \"ferry 10 min + 5 min walk\",\n    best_time: \"morning\",\n    category: \"history\",\n    duration: 120\n  },\n  \"Vyttila\": {\n    name: \"Vyttila Mobility Hub & Local Backwater Views\",\n    description: \"Kerala's largest transport hub with backwater views\",\n    walk: \"2 min\",\n    best_time: \"afternoon\",\n    category: \"mix\",\n    duration: 30\n  },\n  \"MG Road_food\": {\n    station: \"MG Road\",\n    name: \"Kayees Rahmathulla Hotel\",\n    description: \"Legendary Kochi biryani since 1947 — a must-eat\",\n    walk: \"8 min\",\n    best_time: \"lunch\",\n    category: \"food\",\n    duration: 45\n  },\n  \"Kaloor\": {\n    name: \"Kaloor International Stadium & FC Kerala\",\n    description: \"Football mad Kochi — stadium tours available\",\n    walk: \"5 min\",\n    best_time: \"afternoon\",\n    category: \"mix\",\n    duration: 45\n  }\n};\n\n// Select stops based on preference and hours\nconst pref = intent.tourist_preference.toLowerCase();\nconst hours = intent.tourist_hours.toLowerCase();\nconst maxStops = hours === \"full\" ? 5 : 3;\nconst maxMins = hours === \"full\" ? 360 : 180;\n\n// Filter and score attractions\nlet candidates = Object.entries(ATTRACTIONS).filter(([key, a]) => {\n  if (pref === \"mix\") return true;\n  if (pref === \"history\") return a.category === \"history\" || a.category === \"mix\";\n  if (pref === \"food\") return a.category === \"food\" || a.category === \"mix\";\n  if (pref === \"shopping\") return a.category === \"shopping\" || a.category === \"mix\";\n  return true;\n});\n\n// Pick stops that fit in the time budget\nlet selectedStops = [];\nlet totalMins = 0;\n\n// Always start from Aluva (northernmost, logical start)\nconst startStation = \"Aluva\";\n\n// Build a logical south-to-north or north-to-south route\nconst LINE_ORDER = [\"Aluva\",\"Pulinchodu\",\"Companypady\",\"Ambattukavu\",\"Muttom\",\n  \"Kalamassery\",\"Cochin University\",\"Pathadipalam\",\"Edapally\",\"Changampuzha Park\",\n  \"Palarivattom\",\"JLN Stadium\",\"Kaloor\",\"Town Hall\",\"MG Road\",\"Maharajas College\",\n  \"Ernakulam South\",\"Kadavanthra\",\"Elamkulam\",\"Vyttila\",\"Thykoodam\",\"Pettah\",\n  \"Vadakkekotta\",\"SN Junction\",\"Tripunithura\"];\n\n// Sort candidates by line order for logical route\ncandidates.sort((a, b) => {\n  const stationA = a[1].station ?? a[0].replace(\"_food\",\"\").replace(\"_alt\",\"\");\n  const stationB = b[1].station ?? b[0].replace(\"_food\",\"\").replace(\"_alt\",\"\");\n  return LINE_ORDER.indexOf(stationA) - LINE_ORDER.indexOf(stationB);\n});\n\nfor (const [key, attraction] of candidates) {\n  if (selectedStops.length >= maxStops) break;\n  if (totalMins + attraction.duration + 5 > maxMins) continue;\n  \n  const stationName = attraction.station ?? key.replace(\"_food\",\"\").replace(\"_alt\",\"\");\n  selectedStops.push({\n    station: stationName,\n    ...attraction\n  });\n  totalMins += attraction.duration + 5; // 5 min metro between stops\n}\n\nif (selectedStops.length === 0) {\n  return [{ json: { result: \"I couldn't find matching attractions. Try: _mix of everything_ or _full day_\" } }];\n}\n\n// Calculate times starting from 9 AM\nlet currentMins = 9 * 60;\nlet itinerary = [];\nlet mapStops = [];\nlet previousStation = startStation;\n\nfor (const stop of selectedStops) {\n  const stopsCount = Math.abs(\n    LINE_ORDER.indexOf(stop.station) - LINE_ORDER.indexOf(previousStation)\n  );\n  const transitMins = stopsCount * 2;\n  currentMins += transitMins;\n  \n  const arriveH = Math.floor(currentMins / 60);\n  const arriveM = currentMins % 60;\n  const arriveStr = `${arriveH}:${String(arriveM).padStart(2,\"0\")}`;\n  \n  const leaveH = Math.floor((currentMins + stop.duration) / 60);\n  const leaveM = (currentMins + stop.duration) % 60;\n  const leaveStr = `${leaveH}:${String(leaveM).padStart(2,\"0\")}`;\n  \n  itinerary.push({\n    station: stop.station,\n    name: stop.name,\n    description: stop.description,\n    walk: stop.walk,\n    arrive: arriveStr,\n    leave: leaveStr,\n    duration: stop.duration\n  });\n  \n  mapStops.push(encodeURIComponent(stop.station + \" Metro Station Kochi\"));\n  currentMins += stop.duration;\n  previousStation = stop.station;\n}\n\n// Build reply message\nconst emoji = { history: \"🏛\", food: \"🍛\", shopping: \"🛍\", mix: \"🌴\", sightseeing: \"🌊\" };\n\nlet reply = `🌴 *Your Kochi Metro Day Trip*\\n`;\nreply += `${hours === \"full\" ? \"Full Day\" : \"Half Day\"} · ${pref === \"mix\" ? \"Best of Kochi\" : pref.charAt(0).toUpperCase() + pref.slice(1)}\\n\\n`;\n\nfor (let i = 0; i < itinerary.length; i++) {\n  const stop = itinerary[i];\n  const cat = ATTRACTIONS[stop.station]?.category ?? \"mix\";\n  reply += `${emoji[cat] ?? \"📍\"} *${stop.arrive} — ${stop.name}*\\n`;\n  reply += `📍 ${stop.station} Metro · 🚶 ${stop.walk}\\n`;\n  reply += `_${stop.description}_\\n`;\n  if (i < itinerary.length - 1) reply += `\\n`;\n}\n\nconst totalFareEstimate = selectedStops.length * 20; // rough average\n\nreply += `\\n💳 Estimated metro fare: ₹${totalFareEstimate}\\n`;\nreply += `⏱ Total time: ~${Math.round(totalMins / 60 * 10) / 10} hours\\n\\n`;\n\nconst mapsUrl = `https://www.google.com/maps/dir/${mapStops.join(\"/\")}`;\nreply += `🗺 Full route on Maps:\\n${mapsUrl}\\n\\n`;\nreply += `_Tap any station name to explore more · Reply to replan_`;\n\nreturn [{ json: { result: reply } }];",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        220,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Generate Itinerary",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "4e852031-b593-4e5f-8f54-32d2dbbc334c",
+  "activeVersionId": "4e852031-b593-4e5f-8f54-32d2dbbc334c",
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "shared": [
+    {
+      "updatedAt": "2026-07-18T20:14:37.910Z",
+      "createdAt": "2026-07-18T20:14:37.910Z",
+      "role": "workflow:owner",
+      "workflowId": "gl0iBxoh889o5mRe",
+      "projectId": "sJbRQ0D9Xds02Xje",
+      "project": {
+        "updatedAt": "2026-07-13T09:24:08.945Z",
+        "createdAt": "2026-07-13T09:07:47.549Z",
+        "id": "sJbRQ0D9Xds02Xje",
+        "name": "Midhum P M <midhun.titan@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+      }
+    }
+  ],
+  "tags": []
+}

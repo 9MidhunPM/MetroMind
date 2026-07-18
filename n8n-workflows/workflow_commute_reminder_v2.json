@@ -1,0 +1,265 @@
+{
+  "updatedAt": "2026-07-18T20:28:53.755Z",
+  "createdAt": "2026-07-18T19:59:51.609Z",
+  "id": "VgjULGieV3RIG7Q8",
+  "name": "MetroMind Commute Reminder V2",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "11111111-2222-3333-4444-555555555555",
+      "name": "Schedule Trigger",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "* * * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "22222222-2222-3333-4444-555555555555",
+      "name": "Check Profiles",
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst profiles = staticData.commute_profiles || {};\n\nconst now = new Date();\nconst options = { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit', weekday: 'long' };\nconst formatter = new Intl.DateTimeFormat('en-US', options);\nconst parts = formatter.formatToParts(now);\nlet dayOfWeek = '', currentHour = '', currentMinute = '';\nfor(let p of parts) {\n  if (p.type === 'weekday') dayOfWeek = p.value;\n  if (p.type === 'hour') currentHour = p.value;\n  if (p.type === 'minute') currentMinute = p.value;\n}\n\nconst currentISTMinutes = parseInt(currentHour) * 60 + parseInt(currentMinute);\n\nconst activeCommutes = [];\n\nfor (const [phone, profile] of Object.entries(profiles)) {\n  const commuteDays = Array.isArray(profile.commute_days) ? profile.commute_days : JSON.parse(profile.commute_days || '[]');\n  if (!commuteDays.includes(dayOfWeek)) continue;\n  \n  const [ph, pm] = (profile.commute_time || '00:00').split(':');\n  const profileMinutes = parseInt(ph) * 60 + parseInt(pm);\n  \n  // Triggers 15 minutes BEFORE commute time\n  if (currentISTMinutes === profileMinutes - 15) {\n    activeCommutes.push({\n      phoneNumber: phone,\n      origin: profile.commute_origin,\n      destination: profile.commute_destination,\n      scheduled_time: profile.commute_time\n    });\n  }\n}\n\nreturn [{ json: { activeCommutes } }];",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        220,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "33333333-2222-3333-4444-555555555555",
+      "name": "Has Commutes?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.activeCommutes.length }}",
+              "operator": {
+                "operation": "larger",
+                "rightValue": 0,
+                "singleValue": false,
+                "type": "number"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        440,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "44444444-2222-3333-4444-555555555555",
+      "name": "Load GTFS",
+      "parameters": {
+        "options": {},
+        "url": "http://mindmetroapi.midhunapi.me/gtfs-data"
+      },
+      "position": [
+        660,
+        -80
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+    {
+      "id": "55555555-2222-3333-4444-555555555555",
+      "name": "Fetch Weather",
+      "parameters": {
+        "options": {},
+        "url": "https://api.openweathermap.org/data/2.5/weather?q=Kochi&units=metric",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpQueryAuth"
+      },
+      "position": [
+        880,
+        -80
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "Aqn8vTRjDAK0PnkE",
+          "name": "OpenWeather API Key"
+        }
+      }
+    },
+    {
+      "id": "66666666-2222-3333-4444-555555555555",
+      "name": "Calculate Trips",
+      "parameters": {
+        "jsCode": "const gtfs = $('Load GTFS').first().json;\nconst weather = $('Fetch Weather').first().json;\nconst pre = $('Check Profiles').first().json;\nconst activeCommutes = pre.activeCommutes;\n\nconst stationsObj = gtfs.stations || {};\nconst stations = Object.entries(stationsObj).map(([name, data]) => ({ name, ...data }));\nconst line = gtfs.line || [];\nconst schedule = gtfs.schedule || [];\nconst fares = gtfs.fares || {};\n\nfunction haversine(lat1, lon1, lat2, lon2) {\n    const R = 6371;\n    const dLat = (lat2 - lat1) * Math.PI / 180;\n    const dLon = (lon2 - lon1) * Math.PI / 180;\n    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;\n    return R * 2 * Math.asin(Math.sqrt(a));\n}\nfunction matchStation(searchName) {\n    if (!searchName) return null;\n    const s1 = String(searchName).toLowerCase().replace(/[^a-z0-9]/g, '');\n    for (const st of stations) {\n        const s2 = String(st.name).toLowerCase().replace(/[^a-z0-9]/g, '');\n        if (s1 === s2) return st;  \n    }\n    for (const st of stations) {\n        const s2 = String(st.name).toLowerCase().replace(/[^a-z0-9]/g, '');\n        if (s1.includes(s2) || s2.includes(s1)) return st;\n    }\n    return null;\n}\n\nconst now = new Date();\nconst utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);\nconst istNow = new Date(utcNow + (330 * 60000));\nconst arrivalAtStation = new Date(istNow.getTime() + (15 * 60000));\nconst aH = arrivalAtStation.getHours(), aM = arrivalAtStation.getMinutes(), aS = arrivalAtStation.getSeconds();\nconst arrivalTimeStr = `${String(aH).padStart(2,'0')}:${String(aM).padStart(2,'0')}:${String(aS).padStart(2,'0')}`;\n\nconst outputItems = [];\n\nfor (const commute of activeCommutes) {\n    const origin = commute.origin;\n    const dest = commute.destination;\n    const entryStation = matchStation(origin);\n    const exitStation = matchStation(dest);\n    \n    if (!entryStation || !exitStation) continue;\n    if (entryStation.name === exitStation.name) continue;\n\n    let stopCount = 0;\n    const entryIndex = line.indexOf(entryStation.name);\n    const exitIndex = line.indexOf(exitStation.name);\n    if (entryIndex !== -1 && exitIndex !== -1) stopCount = Math.abs(entryIndex - exitIndex);\n\n    let entrySchedules = [];\n    if (Array.isArray(schedule)) {\n        entrySchedules = schedule.filter(s => s.stop_id === entryStation.id || s.stop_id === entryStation.name);\n    } else if (schedule[entryStation.id] || schedule[entryStation.name]) {\n        const arr = schedule[entryStation.id] || schedule[entryStation.name];\n        entrySchedules = arr.map(t => ({ stop_id: entryStation.id, departure_time: t.time || t.departure_time || t }));\n    }\n    entrySchedules = entrySchedules.filter(s => (s.departure_time || '') >= arrivalTimeStr);\n    entrySchedules.sort((a,b) => (a.departure_time||'').localeCompare(b.departure_time||''));\n\n    const nextTrain = entrySchedules.length > 0 ? entrySchedules[0] : null;\n    let nextDepartureTime = 'N/A';\n    if (nextTrain) nextDepartureTime = (nextTrain.departure_time || '').slice(0,5);\n\n    let fare = 0;\n    const key = `${entryStation.zone}_${exitStation.zone}`;\n    if (fares[key]) fare = fares[key];\n    else if (fares[stopCount]) fare = fares[stopCount];\n    else {\n        const dist = haversine(entryStation.lat, entryStation.lon, exitStation.lat, exitStation.lon);\n        fare = (dist<=2?10:dist<=5?20:dist<=10?30:dist<=15?40:dist<=20?50:60);\n    }\n    \n    const weatherTip = weather.weather && weather.weather[0] ? `🌤 Weather in Kochi: ${weather.weather[0].main}, ${Math.round(weather.main.temp)}°C` : '';\n\n    const message = `Good morning! 🚇 It's almost time for your ${commute.scheduled_time} commute.\\n\\n📍 ${entryStation.name} → ${exitStation.name}\\n💰 Fare: ₹${fare}\\n\\n🚆 The next train leaves at ${nextDepartureTime}.\\n\\n${weatherTip}\\n\\nHave a great trip!`;\n\n    outputItems.push({\n        json: {\n            phoneNumber: commute.phoneNumber,\n            outboundMessage: message\n        }\n    });\n}\n\nreturn outputItems;",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1100,
+        -80
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "79ba6c8f-c0eb-45a7-ae18-0a7d8f602fcd",
+      "name": "Twilio WhatsApp Send",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1.2,
+      "position": [
+        1320,
+        -80
+      ],
+      "parameters": {
+        "from": "whatsapp:+14155238886",
+        "message": "={{ $json.replyMessage }}",
+        "operation": "send",
+        "resource": "message",
+        "to": "={{ 'whatsapp:' + $json.phoneNumber }}"
+      },
+      "credentials": {
+        "twilioApi": {
+          "id": "Oqhyt7ABrzQRs3J4",
+          "name": "Twilio account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Check Profiles": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Has Commutes?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Fetch Weather": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Calculate Trips",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Has Commutes?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Load GTFS",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Load GTFS": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Fetch Weather",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check Profiles",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Calculate Trips": {
+      "main": [
+        [
+          {
+            "node": "Twilio WhatsApp Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true
+  },
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "108e5622-ffcc-4676-ab8c-35746b2b6b85",
+  "activeVersionId": "108e5622-ffcc-4676-ab8c-35746b2b6b85",
+  "versionCounter": 3,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "shared": [
+    {
+      "updatedAt": "2026-07-18T19:59:51.612Z",
+      "createdAt": "2026-07-18T19:59:51.612Z",
+      "role": "workflow:owner",
+      "workflowId": "VgjULGieV3RIG7Q8",
+      "projectId": "sJbRQ0D9Xds02Xje",
+      "project": {
+        "updatedAt": "2026-07-13T09:24:08.945Z",
+        "createdAt": "2026-07-13T09:07:47.549Z",
+        "id": "sJbRQ0D9Xds02Xje",
+        "name": "Midhum P M <midhun.titan@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+      }
+    }
+  ],
+  "tags": []
+}
