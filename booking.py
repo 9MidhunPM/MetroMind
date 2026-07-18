@@ -103,7 +103,11 @@ async def book_ticket(url: str, origin: str, destination: str, passengers: int) 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=os.getenv("HEADLESS", "true").lower() == "true",
-            args=["--disable-blink-features=AutomationControlled"]
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
+            ]
         )
         # Set a mobile User-Agent so Razorpay serves mobile deep links instead of just QR codes
         context = await browser.new_context(
