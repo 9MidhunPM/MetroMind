@@ -1,0 +1,506 @@
+{
+  "name": "Agent: WhatsApp Brain",
+  "nodes": [
+    {
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        880,
+        656
+      ],
+      "typeVersion": 1,
+      "parameters": {}
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.isTextOnly }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "74e62363-03db-491c-b4c1-7eba55e1ba8a"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f4d1fbe8-c218-479f-83c8-a11f1043d3df",
+      "name": "Text Message?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "options": {
+          "systemMessage": "You are MetroMind, a friendly, professional, fast Kochi Metro assistant on WhatsApp. Reply in concise plain text only. Never expose internal reasoning, tools, APIs, or credentials. Use Simple Memory to retain user preferences and context; naturally suggest a prior route before asking again. Before accepting any station, call Station Knowledge. Use Text Parser for ambiguous text. Use Current Date & Time for today/tomorrow/relative time; Calculator for arithmetic. When the user asks to plan a trip, check routes, or requests travel info, use the Plan Trip tool. The Plan Trip tool returns a fully formatted response (MetroMind Trip Plan). You MUST output this exact response directly to the user without altering or summarizing it. If the tool is unavailable, returns an error, or fails, DO NOT attempt to guess or plan the route yourself. Apologize and tell the user the routing service is temporarily down. Never hallucinate metro stations or routes. For booking, collect and validate origin, destination, passengers, and the booking URL; never invent a missing value. Call Book Ticket only when all four exist. If Book Ticket reports an error, apologise briefly, state the safe error summary, and invite a retry.\n\nWhen Book Ticket returns successfully with a payment_url or deeplink, present it as:\n\n\ud83d\ude87 *Your Kochi Metro ticket is booked!*\n\n\ud83d\udd39 *Route:* <origin> \u2192 <destination>\n\ud83d\udd39 *Passengers:* <count>\n\ud83d\udd39 *Fare:* <fare if available>\n\n\ud83d\udc47 Tap below to pay\n\n\ud83d\udcb3 *Pay using Google Pay*\n<payment_url>\n\nAlways place the payment URL on its own line directly below the 'Pay using Google Pay' label so it appears as a tappable link. Never wrap the URL in markdown or parentheses. Never claim live train data unless a future tool provides it.",
+          "maxIterations": 20,
+          "returnIntermediateSteps": false,
+          "passthroughBinaryImages": false,
+          "passthroughBinaryPdfs": false
+        }
+      },
+      "id": "29daf3bf-5d28-48aa-b90b-0b69e7ace360",
+      "name": "MetroMind AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1712,
+        512
+      ],
+      "notes": "The only decision-maker. Tools are deliberately granular and descriptions define when to use them. Memory is keyed by the sender\u2019s WhatsApp number."
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Preprocess Message').first().json.phoneNumber }}",
+        "contextWindowLength": 20
+      },
+      "id": "27266948-4de7-4b8c-87dd-b2b39c6a3ab0",
+      "name": "Simple Memory \u2014 WhatsApp user",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        1456,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Resolve Kochi Metro station names, aliases, and common misspellings. Always use this before confirming a station, fare, route, or booking.",
+        "jsCode": "const stations = ['Aluva','Pulinchodu','Companypady','Ambattukavu','Muttom','Kalamassery','Cochin University','Pathadipalam','Edappally','Changampuzha Park','Palarivattom','JLN Stadium','Kaloor','Lissie','MG Road','Maharaja\u2019s College','Ernakulam South','Kadavanthra','Elamkulam','Vyttila','Thaikoodam','Petta','Vadakkekotta','SN Junction','Tripunithura'];\nconst aliases = {'edapally':'Edappally','edappaly':'Edappally','m g road':'MG Road','mgroad':'MG Road','maharajas':'Maharaja\u2019s College','maharajas college':'Maharaja\u2019s College','ernakulam south':'Ernakulam South','south':'Ernakulam South','jln':'JLN Stadium','stadium':'JLN Stadium','sn junction':'SN Junction','tripunithura terminal':'Tripunithura'};\nconst norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();\nconst q = norm(query.station); const exact = aliases[q] || stations.find(s => norm(s) === q);\nif (exact) return JSON.stringify({resolved: exact, confidence: 'high'});\nconst score = s => { const a=norm(s); let m=0; for (const c of q) if(a.includes(c)) m++; return m/Math.max(a.length,q.length,1); };\nconst candidates = stations.map(s=>({station:s,score:score(s)})).sort((a,b)=>b.score-a.score).slice(0,3);\nreturn JSON.stringify({resolved: candidates[0]?.score >= 0.45 ? candidates[0].station : null, confidence: candidates[0]?.score >= 0.7 ? 'medium':'low', candidates});",
+        "specifyInputSchema": true,
+        "jsonSchemaExample": "{\"station\":\"edapally\"}"
+      },
+      "id": "cce671a2-f7a9-44c7-ac49-1ae8931cc928",
+      "name": "Station Knowledge",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        1584,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Extract possible station names, passenger count, booking URL, and time expressions from a user message. Use for ambiguous booking or timing requests.",
+        "jsCode": "const text=String(query.text||''); const url=(text.match(/https?:\\/\\/[^\\s]+/i)||[])[0]||null; const passengers=Number((text.match(/\\b(\\d+)\\s*(passenger|people|persons|tickets?)\\b/i)||[])[1])||null; const time=(text.match(/\\b(today|tomorrow|tonight|in\\s+\\d+\\s+(minutes?|hours?)|\\d{1,2}[:.]\\d{2}(?:\\s?[ap]m)?|\\d{1,2}\\s?[ap]m)\\b/i)||[])[0]||null; return JSON.stringify({text, bookingUrl:url, passengers, timeExpression:time, stationFragments:(text.match(/(?:from|to)\\s+([A-Za-z .\u2019'-]+)/gi)||[])});",
+        "specifyInputSchema": true,
+        "jsonSchemaExample": "{\"text\":\"2 passengers from Aluva to MG Road tomorrow at 8\"}"
+      },
+      "id": "24009702-e933-46a6-b892-cbf5d0e2c0ab",
+      "name": "Text Parser",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        1712,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "outputFieldName": "currentDateTime",
+        "options": {
+          "timezone": "Asia/Kolkata"
+        }
+      },
+      "id": "ebfce732-7508-467a-89c6-1ed53fa906df",
+      "name": "Current Date & Time",
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        736
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "92d56be8-c787-42ed-9ff7-909c013f5db5",
+      "name": "Calculator",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        1968,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.weather.example/forecast",
+        "options": {
+          "response": {},
+          "timeout": 5000
+        },
+        "optimizeResponse": true
+      },
+      "id": "949a8d05-5101-4af9-9fc3-b0983b8ad449",
+      "name": "Weather Tool (stub)",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2096,
+        736
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.item.json; const pre = $('Preprocess Message').first().json; const message = String(input.output ?? 'Sorry, I could not prepare a response. Please try again.').trim(); return [{ json: { phoneNumber: pre.phoneNumber, outboundMessage: message.slice(0, 1500), loggedAt: $now.toISO(), userMessage: pre.userMessage, responseTimeMs: Date.now() - new Date(pre.receivedAt).getTime(), intent: 'assistant_response', origin: '', destination: '' } }];"
+      },
+      "id": "3d34125a-9a35-4caf-b6d8-78ed72bd883d",
+      "name": "Format Agent Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2432,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "from": "={{ $('Preprocess Message').first().json.twilioFrom }}",
+        "to": "={{ $json.phoneNumber }}",
+        "toWhatsapp": true,
+        "message": "={{ $json.outboundMessage }}",
+        "options": {}
+      },
+      "id": "e9b6b3ea-337f-471c-bc81-76f1494d8f34",
+      "name": "Twilio WhatsApp Send Message",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        2656,
+        432
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "Oqhyt7ABrzQRs3J4",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return [{ json: { phoneNumber: $json.phoneNumber, outboundMessage: 'Sorry, MetroMind currently supports text messages only. Please send your request as a text message.' } }];"
+      },
+      "id": "85444b94-abc5-4c4c-acbc-64ad80170b53",
+      "name": "Unsupported Media Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2432,
+        784
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Book a Kochi Metro ticket. Use only when the user has provided ALL four required values: a valid booking URL (from prutech.org), an origin station, a destination station, and a passenger count. Do NOT call this tool unless all four are confirmed \u2014 never invent a missing value. Returns the booking result including a payment URL or deeplink on success, or an error message on failure.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "CHyJtV2PScQ7aZ6B"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "schema": [
+            {
+              "display": true,
+              "displayName": "url",
+              "id": "url",
+              "type": "string"
+            },
+            {
+              "display": true,
+              "displayName": "origin",
+              "id": "origin",
+              "type": "string"
+            },
+            {
+              "display": true,
+              "displayName": "destination",
+              "id": "destination",
+              "type": "string"
+            },
+            {
+              "display": true,
+              "displayName": "passengers",
+              "id": "passengers",
+              "type": "number"
+            }
+          ],
+          "value": {
+            "destination": "={{ $fromAI('destination_station', 'The validated destination station name (e.g. Palarivattom, Vyttila)', 'string') }}",
+            "origin": "={{ $fromAI('origin_station', 'The validated origin station name (e.g. Aluva, MG Road)', 'string') }}",
+            "passengers": "={{ $fromAI('passenger_count', 'Number of passengers as an integer between 1 and 10', 'number') }}",
+            "url": "={{ $fromAI('booking_url', 'The KMRL booking URL from prutech.org supplied by the user. Never invent this.', 'string') }}"
+          }
+        }
+      },
+      "id": "ae54b0c0-8a8a-4888-b835-81df83252426",
+      "name": "Book Ticket",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2224,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatNvidia",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        736
+      ],
+      "id": "d42f5caa-01bc-4d44-ba38-c2339d323afc",
+      "name": "NVIDIA Nemotron Chat Model",
+      "credentials": {
+        "nvidiaApi": {
+          "id": "TbaTz8LXFvQujHk2",
+          "name": "NVIDIA Nemotron account"
+        }
+      }
+    },
+    {
+      "id": "5fe99469-f91c-4000-b3e4-0638c2f0f1b1",
+      "name": "Plan Trip",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2352,
+        736
+      ],
+      "parameters": {
+        "description": "Plan a trip on the Kochi Metro, find routes, calculate fares, and get next trains. Use this tool whenever the user mentions places they want to go, or asks for route or ticket information.",
+        "name": "plan_trip",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "8BzKbQxyYXVwtX0K"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "schema": [
+            {
+              "display": true,
+              "displayName": "userMessage",
+              "id": "userMessage",
+              "type": "string"
+            },
+            {
+              "display": true,
+              "displayName": "latitude",
+              "id": "latitude",
+              "type": "string"
+            },
+            {
+              "display": true,
+              "displayName": "longitude",
+              "id": "longitude",
+              "type": "string"
+            },
+            {
+              "display": true,
+              "displayName": "phoneNumber",
+              "id": "phoneNumber",
+              "type": "string"
+            }
+          ],
+          "value": {
+            "latitude": "={{ $('Preprocess Message').first().json.latitude }}",
+            "longitude": "={{ $('Preprocess Message').first().json.longitude }}",
+            "phoneNumber": "={{ $('Preprocess Message').first().json.phoneNumber }}",
+            "userMessage": "={{ $fromAI('query', 'The travel request or route inquiry, rewritten to include all context (e.g. origin, destination, passengers)') }}"
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Text Message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Message?": {
+      "main": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unsupported Media Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MetroMind AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Agent Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory \u2014 WhatsApp user": {
+      "ai_memory": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Station Knowledge": {
+      "ai_tool": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Parser": {
+      "ai_tool": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Current Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weather Tool (stub)": {
+      "ai_tool": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Agent Reply": {
+      "main": [
+        [
+          {
+            "node": "Twilio WhatsApp Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unsupported Media Reply": {
+      "main": [
+        [
+          {
+            "node": "Twilio WhatsApp Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Book Ticket": {
+      "ai_tool": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NVIDIA Nemotron Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Trip": {
+      "ai_tool": [
+        [
+          {
+            "node": "MetroMind AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

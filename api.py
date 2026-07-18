@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from urllib.parse import quote, unquote
+import json
+import os
 import asyncio
 import traceback
 import logging
@@ -124,6 +126,22 @@ async def pay_redirect(url: str = Query(..., description="The UPI deeplink to re
 </body>
 </html>"""
     return HTMLResponse(content=html)
+
+
+@app.get("/gtfs-data")
+async def get_gtfs_data():
+    """
+    Load the converted GTFS JSON data so workflows can access it.
+    """
+    # Use a path relative to the script location to work on any server
+    data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kmrl.json")
+    try:
+        with open(data_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    except Exception as e:
+        logger.error(f"Error loading GTFS data: {e}")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(e)})
 
 
 @app.get("/health")

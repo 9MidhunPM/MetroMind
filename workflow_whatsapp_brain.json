@@ -1,0 +1,551 @@
+{
+  "success": true,
+  "data": {
+    "updatedAt": "2026-07-18T11:10:46.235Z",
+    "createdAt": "2026-07-17T18:24:36.049Z",
+    "id": "xfeqAhfLhWYUABBf",
+    "name": "Agent: WhatsApp Brain",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {},
+        "id": "e4b6b3ea-1234-471c-bc81-76f1494d8f34",
+        "name": "Execute Workflow Trigger",
+        "position": [
+          880,
+          176
+        ],
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "74e62363-03db-491c-b4c1-7eba55e1ba8a",
+                "leftValue": "={{ $json.isTextOnly }}",
+                "operator": {
+                  "operation": "true",
+                  "singleValue": true,
+                  "type": "boolean"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            }
+          },
+          "options": {}
+        },
+        "id": "f4d1fbe8-c218-479f-83c8-a11f1043d3df",
+        "name": "Text Message?",
+        "position": [
+          1104,
+          176
+        ],
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $json.userMessage }}{{ $json.latitude ? '\\n[User location: ' + $json.latitude + ', ' + $json.longitude + ']' : '' }}",
+          "options": {
+            "systemMessage": "You are MetroMind, a friendly, professional Kochi Metro assistant on WhatsApp. Reply in concise plain text only.\n\n### 1. Handling Location Pins\nIf the user ONLY shares their location (the message contains \"[User location: lat, lon]\" but no travel request), DO NOT call any tools. Respond: \"Got your location! Where would you like to go?\"\n\n### 2. Planning Trips — MANDATORY TOOL USAGE\nWhenever the user mentions ANY destination, route, direction, station, travel, trip, \"take me to\", \"how to get to\", \"go to\", or similar — you MUST call the Plan Trip tool. No exceptions.\n- You are FORBIDDEN from planning routes, suggesting stations, estimating times, or giving directions yourself.\n- CRITICAL FOR LOCATION: When calling Plan Trip, check the ENTIRE conversation history. If you see \"[User location: X, Y]\" in ANY previous message, you MUST include those coordinates in your query. Write your query as: \"10.0717,76.3641 take me to Lulu Mall\". NEVER omit known coordinates.\n- The tool returns a pre-formatted response. Output it EXACTLY as received. Do NOT edit, correct, or add your own routing.\n- If the tool returns an error, relay that exact error to the user.\n\n### 3. Booking Tickets\n- Collect origin, destination, passengers, and booking URL. Call Book Ticket only when all four exist.\n\n### 4. Memory & Tool Usage (CRITICAL)\n- NEVER use conversation memory or your own knowledge for routes, fares, or timings.\n- ALWAYS call the appropriate tool. Memory is ONLY for context like saved locations.\n\n### 5. Weather\nAfter a successful trip plan, call the Weather Tool for the destination city and append a brief weather tip.",
+            "maxIterations": 20,
+            "returnIntermediateSteps": true,
+            "passthroughBinaryImages": false,
+            "passthroughBinaryPdfs": false
+          }
+        },
+        "id": "29daf3bf-5d28-48aa-b90b-0b69e7ace360",
+        "name": "MetroMind AI Agent",
+        "position": [
+          1776,
+          48
+        ],
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "retryOnFail": true,
+        "notes": "The only decision-maker. Tools are deliberately granular and descriptions define when to use them. Memory is keyed by the sender’s WhatsApp number."
+      },
+      {
+        "parameters": {
+          "description": "Check if a name is a valid Kochi Metro station. ONLY use this to verify station names. DO NOT use this for general places, landmarks, or addresses (like malls, hospitals, beaches) - the Plan Trip tool handles places automatically. If the user says 'take me to X', do NOT use this tool to verify X.",
+          "jsCode": "const stations = ['Aluva','Pulinchodu','Companypady','Ambattukavu','Muttom','Kalamassery','Cochin University','Pathadipalam','Edappally','Changampuzha Park','Palarivattom','JLN Stadium','Kaloor','Lissie','MG Road','Maharaja’s College','Ernakulam South','Kadavanthra','Elamkulam','Vyttila','Thaikoodam','Petta','Vadakkekotta','SN Junction','Tripunithura'];\nconst aliases = {'edapally':'Edappally','edappaly':'Edappally','m g road':'MG Road','mgroad':'MG Road','maharajas':'Maharaja’s College','maharajas college':'Maharaja’s College','ernakulam south':'Ernakulam South','south':'Ernakulam South','jln':'JLN Stadium','stadium':'JLN Stadium','sn junction':'SN Junction','tripunithura terminal':'Tripunithura'};\nconst norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();\nconst q = norm(query.station); const exact = aliases[q] || stations.find(s => norm(s) === q);\nif (exact) return JSON.stringify({resolved: exact, confidence: 'high'});\nconst score = s => { const a=norm(s); let m=0; for (const c of q) if(a.includes(c)) m++; return m/Math.max(a.length,q.length,1); };\nconst candidates = stations.map(s=>({station:s,score:score(s)})).sort((a,b)=>b.score-a.score).slice(0,3);\nreturn JSON.stringify({resolved: candidates[0]?.score >= 0.45 ? candidates[0].station : null, confidence: candidates[0]?.score >= 0.7 ? 'medium':'low', candidates});",
+          "specifyInputSchema": true,
+          "jsonSchemaExample": "{\"station\":\"edapally\"}"
+        },
+        "id": "cce671a2-f7a9-44c7-ac49-1ae8931cc928",
+        "name": "Station Knowledge",
+        "position": [
+          2096,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolCode",
+        "typeVersion": 1.3
+      },
+      {
+        "parameters": {
+          "description": "Extract possible station names, passenger count, booking URL, and time expressions from a user message. Use for ambiguous booking or timing requests.",
+          "jsCode": "const text=String(query.text||''); const url=(text.match(/https?:\\/\\/[^\\s]+/i)||[])[0]||null; const passengers=Number((text.match(/\\b(\\d+)\\s*(passenger|people|persons|tickets?)\\b/i)||[])[1])||null; const time=(text.match(/\\b(today|tomorrow|tonight|in\\s+\\d+\\s+(minutes?|hours?)|\\d{1,2}[:.]\\d{2}(?:\\s?[ap]m)?|\\d{1,2}\\s?[ap]m)\\b/i)||[])[0]||null; return JSON.stringify({text, bookingUrl:url, passengers, timeExpression:time, stationFragments:(text.match(/(?:from|to)\\s+([A-Za-z .’'-]+)/gi)||[])});",
+          "specifyInputSchema": true,
+          "jsonSchemaExample": "{\"text\":\"2 passengers from Aluva to MG Road tomorrow at 8\"}"
+        },
+        "id": "24009702-e933-46a6-b892-cbf5d0e2c0ab",
+        "name": "Text Parser",
+        "position": [
+          2224,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolCode",
+        "typeVersion": 1.3
+      },
+      {
+        "parameters": {
+          "outputFieldName": "currentDateTime",
+          "options": {
+            "timezone": "Asia/Kolkata"
+          }
+        },
+        "id": "ebfce732-7508-467a-89c6-1ed53fa906df",
+        "name": "Current Date & Time",
+        "position": [
+          1840,
+          272
+        ],
+        "type": "n8n-nodes-base.dateTimeTool",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {},
+        "id": "92d56be8-c787-42ed-9ff7-909c013f5db5",
+        "name": "Calculator",
+        "position": [
+          1712,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+        "typeVersion": 1
+      },
+      {
+        "parameters": {
+          "toolDescription": "Check the current weather for a city only when the user directly asks about weather. Do not call this automatically after Plan Trip, and never use weather output to modify a Trip Planner route, fare, time, station, or map URL.",
+          "url": "=https://api.openweathermap.org/data/2.5/weather?q={{$fromAI('city', 'The city to check weather for (e.g. Kochi)')}}&appid=b2cb0dd274df5b5fc1aa9e7ec0de8d23&units=metric",
+          "options": {
+            "response": {},
+            "timeout": 5000
+          },
+          "optimizeResponse": true
+        },
+        "id": "949a8d05-5101-4af9-9fc3-b0983b8ad449",
+        "maxTries": 2,
+        "name": "Weather Tool",
+        "position": [
+          2352,
+          272
+        ],
+        "retryOnFail": true,
+        "type": "n8n-nodes-base.httpRequestTool",
+        "typeVersion": 4.4,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const input = $input.first().json;\nconst pre = $('Execute Workflow Trigger').first().json;\n\nfunction parseMaybeJson(value) {\n  if (typeof value !== 'string') return value;\n  const trimmed = value.trim();\n  if (!trimmed) return value;\n  try { return JSON.parse(trimmed); } catch (e) { return value; }\n}\n\nfunction extractReply(value) {\n  const parsed = parseMaybeJson(value);\n  if (typeof parsed === 'string') return parsed;\n  if (Array.isArray(parsed)) {\n    for (const item of parsed) {\n      const found = extractReply(item?.json ?? item);\n      if (found) return found;\n    }\n    return null;\n  }\n  if (parsed && typeof parsed === 'object') {\n    if (typeof parsed.replyMessage === 'string') return parsed.replyMessage;\n    if (typeof parsed.output === 'string' && parsed.output.includes('MetroMind Trip Plan')) return parsed.output;\n    if (parsed.json) return extractReply(parsed.json);\n    if (parsed.data) return extractReply(parsed.data);\n  }\n  return null;\n}\n\nfunction planTripObservationReply(agentOutput) {\n  const candidates = [agentOutput.intermediateSteps, agentOutput.intermediate_steps, agentOutput.steps, agentOutput.intermediateStepsJson].filter(Boolean);\n  for (const rawSteps of candidates) {\n    const steps = parseMaybeJson(rawSteps);\n    if (!Array.isArray(steps)) continue;\n    for (const step of steps) {\n      const toolName = String(step?.action?.tool ?? step?.tool ?? step?.toolName ?? '').toLowerCase();\n      if (!toolName.includes('plan') && !toolName.includes('trip')) continue;\n      const reply = extractReply(step.observation ?? step.output ?? step.result ?? step.response);\n      if (reply) return reply;\n    }\n  }\n  return null;\n}\n\nconst protectedTripReply = planTripObservationReply(input);\nconst message = String(protectedTripReply ?? input.output ?? 'Sorry, I could not prepare a response. Please try again.').trim();\n\nreturn [{\n  json: {\n    phoneNumber: pre.phoneNumber,\n    outboundMessage: message.slice(0, 1500),\n    loggedAt: $now.toISO(),\n    userMessage: pre.userMessage,\n    responseTimeMs: Date.now() - new Date(pre.receivedAt).getTime(),\n    intent: protectedTripReply ? 'trip_plan_tool_response' : 'assistant_response',\n    origin: '',\n    destination: ''\n  }\n}];"
+        },
+        "id": "3d34125a-9a35-4caf-b6d8-78ed72bd883d",
+        "name": "Format Agent Reply",
+        "position": [
+          2560,
+          48
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "return [{ json: { phoneNumber: $json.phoneNumber, outboundMessage: 'Sorry, MetroMind currently supports text messages only. Please send your request as a text message.' } }];"
+        },
+        "id": "85444b94-abc5-4c4c-acbc-64ad80170b53",
+        "name": "Unsupported Media Reply",
+        "position": [
+          2560,
+          304
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "description": "Book a Kochi Metro ticket. Use only when the user has provided ALL four required values: a valid booking URL (from prutech.org), an origin station, a destination station, and a passenger count. Do NOT call this tool unless all four are confirmed — never invent a missing value. Returns the booking result including a payment URL or deeplink on success, or an error message on failure.",
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "CHyJtV2PScQ7aZ6B"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "schema": [
+              {
+                "display": true,
+                "displayName": "url",
+                "id": "url",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "origin",
+                "id": "origin",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "destination",
+                "id": "destination",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "passengers",
+                "id": "passengers",
+                "type": "number"
+              }
+            ],
+            "value": {
+              "destination": "={{ $fromAI('destination_station', 'The validated destination station name (e.g. Palarivattom, Vyttila)', 'string') }}",
+              "origin": "={{ $fromAI('origin_station', 'The validated origin station name (e.g. Aluva, MG Road)', 'string') }}",
+              "passengers": "={{ $fromAI('passenger_count', 'Number of passengers as an integer between 1 and 10', 'number') }}",
+              "url": "={{ $fromAI('booking_url', 'The KMRL booking URL from prutech.org supplied by the user. Never invent this.', 'string') }}"
+            }
+          }
+        },
+        "id": "ae54b0c0-8a8a-4888-b835-81df83252426",
+        "name": "Book Ticket",
+        "position": [
+          1584,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2
+      },
+      {
+        "parameters": {
+          "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+          "options": {}
+        },
+        "id": "d42f5caa-01bc-4d44-ba38-c2339d323afc",
+        "name": "NVIDIA Nemotron Chat Model",
+        "position": [
+          1328,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.lmChatNvidia",
+        "typeVersion": 1,
+        "credentials": {
+          "nvidiaApi": {
+            "id": "TbaTz8LXFvQujHk2",
+            "name": "NVIDIA Nemotron account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "description": "MANDATORY: Call this for ANY travel, route, direction, or trip question. You MUST NOT answer routing questions without this tool. When calling, include any known user coordinates IN your query text.",
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "8BzKbQxyYXVwtX0K"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "schema": [
+              {
+                "display": true,
+                "displayName": "userMessage",
+                "id": "userMessage",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "phoneNumber",
+                "id": "phoneNumber",
+                "type": "string"
+              }
+            ],
+            "value": {
+              "latitude": "={{ $('Execute Workflow Trigger').first().json.latitude || '' }}",
+              "longitude": "={{ $('Execute Workflow Trigger').first().json.longitude || '' }}",
+              "phoneNumber": "={{ $('Execute Workflow Trigger').first().json.phoneNumber }}",
+              "userMessage": "={{ $fromAI('query', 'Write the user travel request. CRITICAL RULE: If anywhere in the conversation you see [User location: X, Y] or the user shared coordinates, you MUST prepend those exact numbers to your query like this: 10.0717,76.3641 take me to Lulu Mall. NEVER skip coordinates you know about. If no location is known, just write the destination.') }}"
+            }
+          },
+          "workflowInput": {
+            "value": {
+              "latitude": "={{ $fromAI('latitude', 'The numeric latitude from the user location in [User location: lat, lon]. Extract the exact number. If no location was shared, leave empty.', 'string') || $('Execute Workflow Trigger').first().json.latitude || '' }}",
+              "longitude": "={{ $fromAI('longitude', 'The numeric longitude from the user location in [User location: lat, lon]. Extract the exact number. If no location was shared, leave empty.', 'string') || $('Execute Workflow Trigger').first().json.longitude || '' }}"
+            }
+          }
+        },
+        "id": "5fe99469-f91c-4000-b3e4-0638c2f0f1b1",
+        "name": "Plan Trip",
+        "position": [
+          1968,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2
+      },
+      {
+        "parameters": {
+          "sessionIdType": "customKey",
+          "sessionKey": "={{ $('Execute Workflow Trigger').first().json.phoneNumber }}",
+          "contextWindowLength": 6
+        },
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.4,
+        "position": [
+          1456,
+          272
+        ],
+        "id": "af685fe9-9091-48c1-b47a-d55a0a8681c1",
+        "name": "Simple Memory"
+      },
+      {
+        "parameters": {
+          "authentication": "webhook",
+          "content": "={{ $json.outboundMessage }}",
+          "options": {}
+        },
+        "id": "a4d96dcd-a6a8-4a06-b6d8-cd73a3e9791f",
+        "name": "Discord Webhook Send",
+        "position": [
+          2784,
+          176
+        ],
+        "type": "n8n-nodes-base.discord",
+        "typeVersion": 2,
+        "webhookId": "81e16414-a4c2-4160-8716-6f39a9885ae8",
+        "credentials": {
+          "discordWebhookApi": {
+            "id": "dHryeTl5pCCx9SnN",
+            "name": "Discord Webhook account"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Book Ticket": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Calculator": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Current Date & Time": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Text Message?",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "Format Agent Reply": {
+        "main": [
+          [
+            {
+              "node": "Discord Webhook Send",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "MetroMind AI Agent": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Format Agent Reply",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "NVIDIA Nemotron Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_languageModel"
+            }
+          ]
+        ]
+      },
+      "Plan Trip": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Station Knowledge": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Text Message?": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "index": 0,
+              "node": "Unsupported Media Reply",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "Text Parser": {
+        "ai_tool": [
+          [
+            {
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Unsupported Media Reply": {
+        "main": [
+          [
+            {
+              "node": "Discord Webhook Send",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Weather Tool": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Simple Memory": {
+        "ai_memory": [
+          [
+            {
+              "node": "MetroMind AI Agent",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveManualExecutions": true,
+      "saveExecutionProgress": true,
+      "binaryMode": "separate",
+      "availableInMCP": true
+    },
+    "staticData": null,
+    "meta": {
+      "aiBuilderAssisted": true,
+      "builderVariant": "mcp"
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "3688fa01-cce8-414b-8e1d-8a740a7e559b",
+    "activeVersionId": "3688fa01-cce8-414b-8e1d-8a740a7e559b",
+    "versionCounter": 43,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-17T18:24:36.054Z",
+        "createdAt": "2026-07-17T18:24:36.054Z",
+        "role": "workflow:owner",
+        "workflowId": "xfeqAhfLhWYUABBf",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  }
+}

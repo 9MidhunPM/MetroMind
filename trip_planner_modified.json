@@ -1,0 +1,565 @@
+{
+  "updatedAt": "2026-07-18T04:11:32.405Z",
+  "createdAt": "2026-07-17T17:28:50.826Z",
+  "id": "8BzKbQxyYXVwtX0K",
+  "name": "Tool: Trip Planner",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "options": {
+          "systemMessage": "You are a transit intent extractor for Kochi Metro, Kerala, India.\n\nExtract travel intent from the user message and return ONLY a raw JSON object. No markdown. No backticks. No explanation. Just JSON.\n\nKochi Metro stations \u2014 if the user mentions any, use EXACT name from this list:\nAluva, Pulinchodu, Companypady, Ambattukavu, Muttom, Kalamassery, Cochin University, Pathadipalam, Edapally, Changampuzha Park, Palarivattom, JLN Stadium, Kaloor, Town Hall, MG Road, Maharajas College, Ernakulam South, Kadavanthra, Elamkulam, Vyttila, Thykoodam, Pettah, Vadakkekotta, SN Junction, Tripunithura\n\nReturn this exact JSON:\n{\n  \"destination_place\": string,\n  \"destination_is_station\": boolean,\n  \"origin_place\": string or null,\n  \"origin_is_station\": boolean,\n  \"passengers\": number,\n  \"requested_arrival_time\": string or null,\n  \"requested_departure_time\": string or null,\n  \"is_location_shared\": boolean\n}\n\nRules:\n- destination_place: where they want to go. Metro station \u2192 exact name from list. Real place \u2192 common name only, no address.\n- destination_is_station: true only if destination is one of the 25 stations above\n- origin_place: null if they shared GPS. Only fill if they explicitly named an origin.\n- origin_is_station: true only if origin is one of the 25 stations\n- passengers: default 1 if not mentioned\n- requested_arrival_time: 24hr format like 22:30 or null if they want to arrive BY a time\n- requested_departure_time: 24hr format like 08:00 or null if they want to leave AT a certain time (e.g., tomorrow at 8am -> \"08:00\")\n- is_location_shared: true if message contains coordinates or mentions sharing location\n\nExamples:\nInput: I want to go to Lulu Mall, 2 people\nOutput: {\"destination_place\":\"Lulu Mall\",\"destination_is_station\":false,\"origin_place\":null,\"origin_is_station\":false,\"passengers\":2,\"requested_arrival_time\":null,\"is_location_shared\":false}\n\nInput: Take me from Aluva to MG Road\nOutput: {\"destination_place\":\"MG Road\",\"destination_is_station\":true,\"origin_place\":\"Aluva\",\"origin_is_station\":true,\"passengers\":1,\"requested_arrival_time\":null,\"is_location_shared\":false}\n\nInput: Need to reach General Hospital by 10:30pm, 3 people\nOutput: {\"destination_place\":\"General Hospital Kochi\",\"destination_is_station\":false,\"origin_place\":null,\"origin_is_station\":false,\"passengers\":3,\"requested_arrival_time\":\"22:30\",\"requested_departure_time\":null,\"is_location_shared\":false}\n\nInput: Tomorrow at 8am from Aluva to Lulu Mall\nOutput: {\"destination_place\":\"Lulu Mall\",\"destination_is_station\":false,\"origin_place\":\"Aluva\",\"origin_is_station\":true,\"passengers\":1,\"requested_arrival_time\":null,\"requested_departure_time\":\"08:00\",\"is_location_shared\":false}\n\nInput: Vyttila to Tripunithura\nOutput: {\"destination_place\":\"Tripunithura\",\"destination_is_station\":true,\"origin_place\":\"Vyttila\",\"origin_is_station\":true,\"passengers\":1,\"requested_arrival_time\":null,\"is_location_shared\":false}"
+        }
+      },
+      "id": "22222222-2222-2222-2222-222222222222",
+      "name": "Extract Intent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        224,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "options": {}
+      },
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "NVIDIA Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatNvidia",
+      "typeVersion": 1,
+      "position": [
+        304,
+        208
+      ],
+      "credentials": {
+        "nvidiaApi": {
+          "id": "TbaTz8LXFvQujHk2",
+          "name": "NVIDIA Nemotron account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.item.json.output ?? $input.item.json.text ?? $input.item.json.message ?? '';\nconst cleaned = String(raw).replace(/```json/gi, '').replace(/```/g, '').trim();\nlet intent;\ntry { intent = JSON.parse(cleaned); } catch(e) { intent = { destination_place: null, destination_is_station: false, origin_place: null, origin_is_station: false, passengers: 1, requested_arrival_time: null, is_location_shared: false, parse_error: true }; }\nreturn [{ json: intent }];"
+      },
+      "id": "44444444-4444-4444-4444-444444444444",
+      "name": "Parse Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $node[\"Parse Intent\"].json.destination_is_station }}",
+              "operator": {
+                "operation": "false",
+                "singleValue": true,
+                "type": "boolean"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "55555555-5555-5555-5555-555555555555",
+      "name": "Check Destination Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://nominatim.openstreetmap.org/search?q={{ encodeURIComponent($node[\"Parse Intent\"].json.destination_place + \" Kerala\") }}&format=json&limit=1&countrycodes=in",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "MetroMind/1.0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "66666666-6666-6666-6666-666666666666",
+      "name": "Resolve Destination",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1024,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://mindmetroapi.midhunapi.me/gtfs-data",
+        "options": {}
+      },
+      "id": "77777777-7777-7777-7777-777777777777",
+      "name": "Load GTFS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1248,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const gtfs = $('Load GTFS').first().json;\nconst intent = $('Parse Intent').first().json;\nconst pre = $('Execute Workflow Trigger').first().json;\n\nconst stations = gtfs.stations;\nconst line = gtfs.line;\nconst schedule = gtfs.schedule;\nconst fares = gtfs.fares;\n\nconst userLat = pre.latitude ? parseFloat(pre.latitude) : null;\nconst userLon = pre.longitude ? parseFloat(pre.longitude) : null;\nconst passengers = intent.passengers ?? 1;\n\n// --- IST TIMEZONE FIX ---\nconst utcNow = new Date();\nconst now = new Date(utcNow.getTime() + (330 * 60000)); // UTC + 5:30 in milliseconds\n\nfunction haversine(lat1, lon1, lat2, lon2) {\n  const R = 6371;\n  const dLat = (lat2 - lat1) * Math.PI / 180;\n  const dLon = (lon2 - lon1) * Math.PI / 180;\n  const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2)**2;\n  return R * 2 * Math.asin(Math.sqrt(a));\n}\n\nfunction closestStation(lat, lon) {\n  let closest = null;\n  let minDist = Infinity;\n  for (const [name, data] of Object.entries(stations)) {\n    const dist = haversine(lat, lon, data.lat, data.lon);\n    if (dist < minDist) {\n      minDist = dist;\n      closest = { name, ...data, distKm: dist.toFixed(2) };\n    }\n  }\n  return closest;\n}\n\nfunction getRoute(from, to) {\n  const fromIdx = line.indexOf(from);\n  const toIdx = line.indexOf(to);\n  if (fromIdx === -1 || toIdx === -1) return null;\n  const direction = fromIdx < toIdx ? \"Tripunithura\" : \"Aluva\";\n  const stops = fromIdx < toIdx ? line.slice(fromIdx, toIdx + 1) : line.slice(toIdx, fromIdx + 1).reverse();\n  return { stops, numStops: stops.length - 1, direction, travelTimeMin: (stops.length - 1) * 2 };\n}\n\nfunction getNextTrains(stationName, count = 3, requestedDepartureTimeStr = null) {\n  const station = stations[stationName];\n  if (!station) return { next: [], last: null };\n  \n  let targetMins;\n  if (requestedDepartureTimeStr) {\n    const parts = requestedDepartureTimeStr.split(\":\");\n    targetMins = parseInt(parts[0]) * 60 + parseInt(parts[1]);\n  } else {\n    // using IST now\n    targetMins = now.getUTCHours() * 60 + now.getUTCMinutes();\n  }\n\n  const entries = (schedule[station.id] || []).map(t => {\n    const parts = t.time.split(\":\");\n    return { ...t, totalMins: parseInt(parts[0]) * 60 + parseInt(parts[1]) };\n  }).sort((a, b) => a.totalMins - b.totalMins);\n  \n  const upcoming = entries.filter(t => t.totalMins >= targetMins);\n  const last = entries[entries.length - 1];\n  return { next: upcoming.slice(0, count).map(t => t.time.slice(0, 5)), last: last ? last.time.slice(0, 5) : null };\n}\n\nfunction getLeaveBy(trainTime, walkMins = 7) {\n  if (!trainTime) return null;\n  const [h, m] = trainTime.split(\":\").map(Number);\n  const total = h * 60 + m - walkMins;\n  if (total < 0) return \"00:00\"; // fallback\n  return `${Math.floor(total/60)}:${String(total%60).padStart(2,\"0\")}`;\n}\n\nfunction getFare(from, to, pax) {\n  const fromData = stations[from];\n  const toData = stations[to];\n  if (!fromData || !toData) return 0;\n  const key = `${fromData.zone}_${toData.zone}`;\n  if (fares[key]) return fares[key] * pax;\n  const dist = haversine(fromData.lat, fromData.lon, toData.lat, toData.lon);\n  const base = dist <= 2 ? 10 : dist <= 5 ? 20 : dist <= 10 ? 30 : dist <= 15 ? 40 : dist <= 20 ? 50 : 60;\n  return base * pax;\n}\n\nif (!pre.hasLocation && !intent.origin_place) {\n  return [{ json: { error: \"no_location\" } }];\n}\n\nif (!intent.destination_place || intent.parse_error) {\n  return [{ json: { error: \"parse_error\" } }];\n}\n\nlet entryStation;\nlet originLat = userLat, originLon = userLon;\n\nif (intent.origin_is_station && intent.origin_place && stations[intent.origin_place]) {\n  entryStation = { name: intent.origin_place, ...stations[intent.origin_place] };\n  originLat = entryStation.lat;\n  originLon = entryStation.lon;\n} else if (intent.origin_place) {\n  let originNominatim = null;\n  try { originNominatim = $(\"Resolve Origin\").first().json; } catch(e) {}\n  \n  if (originNominatim && originNominatim.lat) {\n    originLat = parseFloat(originNominatim.lat);\n    originLon = parseFloat(originNominatim.lon);\n  }\n  \n  if (originLat && originLon) {\n    entryStation = closestStation(originLat, originLon);\n  } else {\n    return [{ json: { error: \"no_location\" } }];\n  }\n} else {\n  // Use GPS\n  if (originLat && originLon) {\n    entryStation = closestStation(originLat, originLon);\n  } else {\n    return [{ json: { error: \"no_location\" } }];\n  }\n}\n\nlet exitStation;\nlet destLat, destLon, destLabel;\n\nif (intent.destination_is_station) {\n  exitStation = { name: intent.destination_place, ...stations[intent.destination_place] };\n  destLat = exitStation.lat;\n  destLon = exitStation.lon;\n  destLabel = intent.destination_place + \" Metro Station Kochi\";\n} else {\n  let nominatim = null;\n  try { nominatim = $('Resolve Destination').first().json; } catch(e) {}\n  \n  destLat = nominatim && nominatim.lat ? parseFloat(nominatim.lat) : null;\n  destLon = nominatim && nominatim.lon ? parseFloat(nominatim.lon) : null;\n  \n  if (destLat && destLon) {\n    exitStation = closestStation(destLat, destLon);\n    destLabel = intent.destination_place + \" Kochi\";\n  } else {\n    return [{ json: { error: \"dest_not_found\" } }];\n  }\n}\n\nconst route = getRoute(entryStation.name, exitStation.name);\nconst { next: nextTrains, last: lastTrain } = getNextTrains(entryStation.name, 3, intent.requested_departure_time);\n\n// CHECK IF METRO IS CLOSED\nif (nextTrains.length === 0 && !intent.requested_departure_time) {\n  return [{ json: { error: \"metro_closed\" } }];\n}\n\nconst leaveBy = getLeaveBy(nextTrains[0]);\nconst fare = getFare(entryStation.name, exitStation.name, passengers);\n\nconst originSegment = userLat && userLon ? `${userLat},${userLon}` : encodeURIComponent((intent.origin_place ?? entryStation.name) + \" Kochi\");\nconst mapsUrl = `https://www.google.com/maps/dir/${originSegment}/${encodeURIComponent(entryStation.name + \" Metro Station Kochi\")}/${encodeURIComponent(exitStation.name + \" Metro Station Kochi\")}/${encodeURIComponent(destLabel)}`;\n\nreturn [{ json: { entryStation: entryStation.name, exitStation: exitStation.name, entryLat: entryStation.lat, entryLon: entryStation.lon, route, nextTrains, lastTrain, leaveBy, fare, passengers, mapsUrl, travelTimeMin: route?.travelTimeMin ?? 0, numStops: route?.numStops ?? 0, error: null } }];"
+      },
+      "id": "88888888-8888-8888-8888-888888888888",
+      "name": "Process Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $node[\"Process Query\"].json.error }}",
+              "operator": {
+                "operation": "empty",
+                "singleValue": true,
+                "type": "string"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "99999999-9999-9999-9999-999999999999",
+      "name": "Check Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1696,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.openweathermap.org/data/2.5/weather?lat={{ $node[\"Process Query\"].json.entryLat }}&lon={{ $node[\"Process Query\"].json.entryLon }}&appid=b2cb0dd274df5b5fc1aa9e7ec0de8d23&units=metric",
+        "options": {}
+      },
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "name": "Get Weather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1920,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const q = $('Process Query').first().json;\n\nif (q.error === \"no_location\") {\n  return [{ json: { replyMessage: \"\ud83d\udccd Please share your live location or tell me which station you're starting from!\\n\\nExample: _Aluva to Lulu Mall, 2 people_\" } }];\n}\n\nif (q.error === \"parse_error\") {\n  return [{ json: { replyMessage: \"Sorry, I didn't understand that \ud83d\ude05\\n\\nTry: _Vyttila to Lulu Mall, 2 people_\\nOr share your location and tell me where you want to go!\" } }];\n}\n\nif (q.error === \"dest_not_found\") {\n  return [{ json: { replyMessage: \"Sorry, I couldn't find that destination on the map \ud83d\uddfa\ufe0f\\n\\nPlease try being a bit more specific (e.g. adding 'Kochi' or a landmark)!\" } }];\n}\n\nif (q.error === \"metro_closed\") {\n  return [{ json: { replyMessage: \"\ud83c\udf19 The metro is currently closed (trains run from 6:00 AM to 11:20 PM). What time do you plan to travel tomorrow so I can find the right trains for you?\" } }];\n}\n\nlet weatherLine = \"\";\ntry {\n  const w = $('Get Weather').first().json;\n  const condition = w?.weather?.[0]?.main?.toLowerCase() ?? \"\";\n  if (condition.includes(\"rain\") || condition.includes(\"drizzle\") || condition.includes(\"thunder\")) {\n    weatherLine = `\\n\ud83c\udf27 *Rain alert* \u2014 ${w.weather[0].description}. Add buffer time for walking.\\n`;\n  }\n} catch(e) {}\n\nconst lastTrainWarn = q.lastTrain ? `\u26a0\ufe0f Last train: ${q.lastTrain}\\n` : \"\";\nconst nextTrainDisplay = q.nextTrains?.[0] ?? \"No trains available\";\nconst leaveByDisplay = q.leaveBy ?? \"N/A\";\n\nconst reply = `\ud83d\ude87 *MetroMind Trip Plan*\n\n\ud83d\udccd ${q.entryStation} \u2192 ${q.exitStation} (Green Line)\n\ud83d\udd59 Next train: ${nextTrainDisplay} (leave by ${leaveByDisplay})\n\u23f1 ${q.travelTimeMin} min | ${q.numStops} stops\n${lastTrainWarn}${weatherLine}\n\ud83d\uddfa Full journey map:\n${q.mapsUrl}\n\n_Powered by MetroMind \u00d7 KMRL Open Data_`;\n\nreturn [{ json: { replyMessage: reply } }];"
+      },
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "name": "Format Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh/metromind",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Title",
+              "value": "New MetroMind Trip"
+            },
+            {
+              "name": "Content-Type",
+              "value": "text/plain"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ $node[\"Process Query\"].json.entryStation }} \u2192 {{ $node[\"Process Query\"].json.exitStation }} | \u20b9{{ $node[\"Process Query\"].json.fare }} | {{ $node[\"Process Query\"].json.nextTrains[0] }}",
+        "options": {}
+      },
+      "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "name": "Notify ntfy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2144,
+        -96
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Fare": "={{ $node[\"Process Query\"].json.fare }}",
+            "From": "={{ $node[\"Process Query\"].json.entryStation }}",
+            "Passengers": "={{ $node[\"Process Query\"].json.passengers }}",
+            "Phone": "={{ $('Execute Workflow Trigger').first().json.phoneNumber }}",
+            "Timestamp": "={{ $now.toISO() }}",
+            "To": "={{ $node[\"Process Query\"].json.exitStation }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "name": "Log Query",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2368,
+        -96
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VhzA5rRJf7lHMDpR",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $node[\"Parse Intent\"].json.origin_is_station }}",
+              "operator": {
+                "operation": "false",
+                "singleValue": true,
+                "type": "boolean"
+              }
+            },
+            {
+              "leftValue": "={{ !!$node[\"Parse Intent\"].json.origin_place }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "e1e1e1e1-e1e1-e1e1-e1e1-e1e1e1e1e1e1",
+      "name": "Check Origin Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        650,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://nominatim.openstreetmap.org/search?q={{ encodeURIComponent($node[\"Parse Intent\"].json.origin_place + \" Kerala\") }}&format=json&limit=1&countrycodes=in",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "MetroMind/1.0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f2f2f2f2-f2f2-f2f2-f2f2-f2f2f2f2f2f2",
+      "name": "Resolve Origin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        850,
+        -200
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Intent": {
+      "main": [
+        [
+          {
+            "node": "Parse Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Intent": {
+      "main": [
+        [
+          {
+            "node": "Check Origin Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Destination Type": {
+      "main": [
+        [
+          {
+            "node": "Resolve Destination",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load GTFS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Destination": {
+      "main": [
+        [
+          {
+            "node": "Load GTFS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load GTFS": {
+      "main": [
+        [
+          {
+            "node": "Process Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Query": {
+      "main": [
+        [
+          {
+            "node": "Check Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Error": {
+      "main": [
+        [
+          {
+            "node": "Get Weather",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NVIDIA Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract Intent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Weather": {
+      "main": [
+        [
+          {
+            "node": "Notify ntfy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify ntfy": {
+      "main": [
+        [
+          {
+            "node": "Log Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Query": {
+      "main": [
+        [
+          {
+            "node": "Format Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Origin Type": {
+      "main": [
+        [
+          {
+            "node": "Resolve Origin",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Destination Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Origin": {
+      "main": [
+        [
+          {
+            "node": "Check Destination Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "d45c758a-42e8-4331-83be-93e37f0542f0",
+  "activeVersionId": "d45c758a-42e8-4331-83be-93e37f0542f0",
+  "versionCounter": 27,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "shared": [
+    {
+      "updatedAt": "2026-07-17T17:28:50.832Z",
+      "createdAt": "2026-07-17T17:28:50.832Z",
+      "role": "workflow:owner",
+      "workflowId": "8BzKbQxyYXVwtX0K",
+      "projectId": "sJbRQ0D9Xds02Xje",
+      "project": {
+        "updatedAt": "2026-07-13T09:24:08.945Z",
+        "createdAt": "2026-07-13T09:07:47.549Z",
+        "id": "sJbRQ0D9Xds02Xje",
+        "name": "Midhum P M <midhun.titan@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+      }
+    }
+  ],
+  "tags": []
+}

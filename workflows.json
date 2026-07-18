@@ -1,0 +1,3672 @@
+[
+  {
+    "updatedAt": "2026-07-14T18:36:06.000Z",
+    "createdAt": "2026-07-13T15:56:53.652Z",
+    "id": "yEjtv9jKyS7kNUU6",
+    "name": "Etlab Attendance Tracker",
+    "description": "Scrapes attendance from Sahrdaya Etlab every 5 minutes, detects changes, and sends ntfy notifications.",
+    "active": false,
+    "isArchived": true,
+    "nodes": [
+      {
+        "parameters": {
+          "content": "## Etlab Attendance Tracker\n\nScrapes attendance from Sahrdaya Etlab every 5 minutes and sends ntfy notification on changes.\n\n### Before activating:\n1. Open the \"Credentials\" Set node and fill in your Etlab username/password\n2. Open \"Send ntfy Notification\" node and replace the topic placeholder\n3. Activate the workflow\n\n### How it works:\n- Logs into Etlab using form authentication\n- Scrapes the attendance HTML table\n- Parses and compares with previous state in staticData\n- Sends ntfy alert only when changes are detected",
+          "height": 200,
+          "width": 300,
+          "color": 4
+        },
+        "id": "22e3e669-55e7-45fb-85fd-b3563ac16487",
+        "name": "Sticky Note aad5eaeb",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -80,
+          -224
+        ]
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "minutes"
+              }
+            ]
+          }
+        },
+        "id": "286f3053-1eee-494c-bbfb-53229e4e70f9",
+        "name": "Every 5 Minutes",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.3,
+        "position": [
+          0,
+          144
+        ]
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "username",
+                "name": "username",
+                "value": "224079",
+                "type": "string"
+              },
+              {
+                "id": "password",
+                "name": "password",
+                "value": "Midhun@123123",
+                "type": "string"
+              },
+              {
+                "id": "ntfyTopic",
+                "name": "ntfyTopic",
+                "value": "midhun-attendance-tracker",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "0637116d-a5f1-465f-bcec-1f7f86f11ec0",
+        "name": "Credentials",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          224,
+          144
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://sahrdaya.etlab.in/user/login",
+          "sendBody": true,
+          "contentType": "form-urlencoded",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "LoginForm[username]",
+                "value": "={{ $json.username }}"
+              },
+              {
+                "name": "LoginForm[password]",
+                "value": "={{ $json.password }}"
+              }
+            ]
+          },
+          "options": {
+            "redirect": {
+              "redirect": {
+                "maxRedirects": 5
+              }
+            },
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "neverError": true,
+                "responseFormat": "text"
+              }
+            }
+          }
+        },
+        "id": "2deb4dca-0a90-459a-ad8f-e6746f94e490",
+        "name": "Login to Etlab",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          448,
+          144
+        ],
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "url": "https://sahrdaya.etlab.in/ktuacademics/student/attendance",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Cookie",
+                "value": "={{ ($(\"Login to Etlab\").item.json.headers[\"set-cookie\"] || []).join(\"; \") }}"
+              }
+            ]
+          },
+          "options": {
+            "redirect": {
+              "redirect": {
+                "maxRedirects": 5
+              }
+            },
+            "response": {
+              "response": {
+                "responseFormat": "text"
+              }
+            }
+          }
+        },
+        "id": "eb6351cb-2ef4-47e6-83b1-8d0d625b6dc1",
+        "name": "Scrape Attendance Page",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          896,
+          48
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const html = $input.first().json.data;\nif (!html || html.length < 100) {\n  return [{ attendanceRecords: [], currentSubjects: {}, emptyHTML: true }];\n}\nconst records = [];\nconst rowPattern = /<tr[^>]*>([\\s\\S]*?)<\\/tr>/gi;\nlet rowMatch;\nlet isHeader = true;\nwhile ((rowMatch = rowPattern.exec(html)) !== null) {\n  if (isHeader) { isHeader = false; continue; }\n  const rowHtml = rowMatch[1];\n  const cells = [];\n  const cellPattern = /<t[dh][^>]*>([\\s\\S]*?)<\\/t[dh]>/gi;\n  let cellMatch;\n  while ((cellMatch = cellPattern.exec(rowHtml)) !== null) {\n    const cellText = cellMatch[1].replace(/<[^>]+>/g, \"\").replace(/&nbsp;/gi, \"\").replace(/&amp;/gi, \"&\").trim();\n    cells.push(cellText);\n  }\n  if (cells.length >= 4) {\n    const subject = cells[0] || \"\";\n    if (subject && subject !== \"Subject\" && subject !== \"Course\") {\n      const total = parseInt(cells[cells.length - 3], 10);\n      const attended = parseInt(cells[cells.length - 2], 10);\n      const perc = parseFloat(cells[cells.length - 1]) || 0;\n      records.push({ subject, totalClasses: total || 0, attendedClasses: attended || 0, percentage: perc });\n    }\n  }\n}\nconst currentSubjects = {};\nfor (const r of records) { currentSubjects[r.subject] = r; }\nreturn [{ attendanceRecords: records, currentSubjects }];"
+        },
+        "id": "939b53af-629f-42a1-b7e6-464e4c7b9948",
+        "name": "Parse Attendance HTML",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1120,
+          48
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const staticData = await getWorkflowStaticData(\"workflow\");\nconst items = $input.all();\nif (!items.length) return [{ changes: [], hasChanges: false }];\nconst currentRecords = items[0].json.attendanceRecords || [];\nconst prevSubjects = staticData.subjects || {};\nconst changes = [];\nfor (const record of currentRecords) {\n  const prev = prevSubjects[record.subject];\n  if (!prev) {\n    changes.push({ type: \"new\", subject: record.subject, totalClasses: record.totalClasses, attendedClasses: record.attendedClasses, percentage: record.percentage, oldPercentage: null });\n  } else if (prev.totalClasses !== record.totalClasses || prev.attendedClasses !== record.attendedClasses || prev.percentage !== record.percentage) {\n    changes.push({ type: \"updated\", subject: record.subject, totalClasses: record.totalClasses, attendedClasses: record.attendedClasses, percentage: record.percentage, oldPercentage: prev.percentage, oldTotalClasses: prev.totalClasses, oldAttendedClasses: prev.attendedClasses });\n  }\n}\nfor (const subj of Object.keys(prevSubjects)) {\n  if (!currentRecords.find(r => r.subject === subj)) {\n    changes.push({ type: \"removed\", subject: subj, totalClasses: 0, attendedClasses: 0, percentage: 0, oldPercentage: prevSubjects[subj].percentage });\n  }\n}\nstaticData.subjects = {};\nfor (const r of currentRecords) { staticData.subjects[r.subject] = r; }\nawait staticData.save();\nif (changes.length > 0) {\n  let message = \"\";\n  for (const c of changes) {\n    if (c.type === \"new\") { message += \"New: \" + c.subject + \" - \" + c.attendedClasses + \"/\" + c.totalClasses + \" (\" + c.percentage + \"%)\\n\"; }\n    else if (c.type === \"updated\") { message += \"Updated: \" + c.subject + \": \" + c.oldPercentage + \"% -> \" + c.percentage + \"% (\" + c.attendedClasses + \"/\" + c.totalClasses + \")\\n\"; }\n    else { message += \"Removed: \" + c.subject + \" (was \" + c.oldPercentage + \"%)\\n\"; }\n  }\n  return [{ changes, hasChanges: true, message: message.trim() }];\n}\nreturn [{ changes: [], hasChanges: false }];"
+        },
+        "id": "14965577-4d7a-4e11-90cd-76a0c667184c",
+        "name": "Compare Attendance",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1344,
+          48
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 1
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.hasChanges }}",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                },
+                "rightValue": true
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "87bfca40-67c7-40f3-92cb-02f6fd2e4268",
+        "name": "Has Changes?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          1568,
+          48
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "=https://ntfy.sh/{{ $\"Credentials\".item.json.ntfyTopic }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Title",
+                "value": "Attendance Update Alert"
+              },
+              {
+                "name": "Priority",
+                "value": "high"
+              },
+              {
+                "name": "Tags",
+                "value": "school"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "raw",
+          "rawContentType": "text/plain",
+          "body": "={{ $json.message }}",
+          "options": {}
+        },
+        "id": "f2a078dd-ac56-48ab-93cb-a4a661dab695",
+        "name": "Send ntfy Notification",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          1792,
+          0
+        ]
+      },
+      {
+        "parameters": {},
+        "id": "01eb44ad-4a7d-4c11-8879-b833dbb7baba",
+        "name": "No Changes",
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          1792,
+          240
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 3
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.body }}",
+                "operator": {
+                  "type": "string",
+                  "operation": "doesNotContain"
+                },
+                "rightValue": "Incorrect",
+                "id": "88db705e-c4ca-4924-81d3-b611905f2587"
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "9356aa20-e30b-4b32-9efb-2e40f46103af",
+        "name": "Login OK?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          672,
+          144
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "raw",
+          "options": {}
+        },
+        "id": "dfcff910-69e6-4770-a530-05d7f2873588",
+        "name": "Login Failed",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          1568,
+          288
+        ]
+      }
+    ],
+    "connections": {
+      "Every 5 Minutes": {
+        "main": [
+          [
+            {
+              "node": "Credentials",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Credentials": {
+        "main": [
+          [
+            {
+              "node": "Login to Etlab",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Scrape Attendance Page": {
+        "main": [
+          [
+            {
+              "node": "Parse Attendance HTML",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Attendance HTML": {
+        "main": [
+          [
+            {
+              "node": "Compare Attendance",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Compare Attendance": {
+        "main": [
+          [
+            {
+              "node": "Has Changes?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Changes?": {
+        "main": [
+          [
+            {
+              "node": "Send ntfy Notification",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "No Changes",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Login to Etlab": {
+        "main": [
+          [
+            {
+              "node": "Login OK?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Login OK?": {
+        "main": [
+          [
+            {
+              "node": "Scrape Attendance Page",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Login Failed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Login Failed": {
+        "main": [
+          [
+            {
+              "node": "No Changes",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "availableInMCP": true,
+      "binaryMode": "separate"
+    },
+    "staticData": {
+      "node:Every 5 Minutes": {
+        "recurrenceRules": [
+          null
+        ],
+        "recurrenceRuleSignatures": [
+          null
+        ]
+      }
+    },
+    "meta": {
+      "aiBuilderAssisted": true,
+      "builderVariant": "mcp"
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "5b63ce0c-503e-4870-bb56-e0b3d48cc464",
+    "activeVersionId": null,
+    "versionCounter": 10,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-13T15:56:53.657Z",
+        "createdAt": "2026-07-13T15:56:53.657Z",
+        "role": "workflow:owner",
+        "workflowId": "yEjtv9jKyS7kNUU6",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-17T02:25:21.663Z",
+    "createdAt": "2026-07-16T18:00:22.084Z",
+    "id": "CHyJtV2PScQ7aZ6B",
+    "name": "Tool: Book Kochi Metro Ticket",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://mindmetroapi.midhunapi.me/book",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ url: $json.url, origin: $json.origin, destination: $json.destination, passengers: $json.passengers }) }}",
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "id": "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b",
+        "maxTries": 2,
+        "name": "Book Kochi Metro",
+        "position": [
+          1120,
+          304
+        ],
+        "retryOnFail": true,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "waitBetweenTries": 3000,
+        "onError": "continueErrorOutput",
+        "notes": "Calls the Kochi Metro booking API.\nPOST https://mindmetroapi.midhunapi.me/book\nRetries once on failure (3s delay). Timeout: 30s."
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "success-check-condition",
+                "leftValue": "={{ $json.success }}",
+                "operator": {
+                  "operation": "equals",
+                  "singleValue": true,
+                  "type": "boolean"
+                },
+                "rightValue": true
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 1
+            }
+          },
+          "options": {}
+        },
+        "id": "f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c",
+        "name": "Booking Successful?",
+        "position": [
+          1344,
+          208
+        ],
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "notes": "Checks if the booking API returned success: true."
+      },
+      {
+        "id": "1e5f69cc-e8cb-44dc-aede-271349bfbaba",
+        "name": "When Executed by Another Workflow",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          224,
+          400
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "url",
+                "type": "string"
+              },
+              {
+                "name": "origin",
+                "type": "string"
+              },
+              {
+                "name": "destination",
+                "type": "string"
+              },
+              {
+                "name": "passengers",
+                "type": "number"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "2042befc-eb64-4912-9e09-c696a1265748",
+        "name": "Return Booking Result",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          1568,
+          304
+        ],
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "success",
+                "name": "success",
+                "type": "boolean",
+                "value": "={{ $json.success }}"
+              },
+              {
+                "id": "payment_url",
+                "name": "payment_url",
+                "type": "string",
+                "value": "={{ $json.payment_url || $json.url || $json.deeplink || '' }}"
+              },
+              {
+                "id": "fare",
+                "name": "fare",
+                "type": "string",
+                "value": "={{ $json.fare || '' }}"
+              },
+              {
+                "id": "error",
+                "name": "error",
+                "type": "string",
+                "value": "={{ $json.error || $json.message || '' }}"
+              },
+              {
+                "id": "origin",
+                "name": "origin",
+                "type": "string",
+                "value": "={{ $('When Executed by Another Workflow').first().json.origin }}"
+              },
+              {
+                "id": "destination",
+                "name": "destination",
+                "type": "string",
+                "value": "={{ $('When Executed by Another Workflow').first().json.destination }}"
+              },
+              {
+                "id": "passengers",
+                "name": "passengers",
+                "type": "number",
+                "value": "={{ $('When Executed by Another Workflow').first().json.passengers }}"
+              }
+            ]
+          },
+          "mode": "manual"
+        }
+      },
+      {
+        "id": "9de78c9c-ffad-4c24-bef3-b1582822900a",
+        "name": "Return Error",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          1568,
+          500
+        ],
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "success",
+                "name": "success",
+                "type": "boolean",
+                "value": false
+              },
+              {
+                "id": "error",
+                "name": "error",
+                "type": "string",
+                "value": "={{ $json.error || $json.message || $json.statusMessage || 'The booking service is temporarily unavailable' }}"
+              },
+              {
+                "id": "origin",
+                "name": "origin",
+                "type": "string",
+                "value": "={{ $('When Executed by Another Workflow').first().json.origin }}"
+              },
+              {
+                "id": "destination",
+                "name": "destination",
+                "type": "string",
+                "value": "={{ $('When Executed by Another Workflow').first().json.destination }}"
+              },
+              {
+                "id": "passengers",
+                "name": "passengers",
+                "type": "number",
+                "value": "={{ $('When Executed by Another Workflow').first().json.passengers }}"
+              }
+            ]
+          },
+          "mode": "manual"
+        }
+      }
+    ],
+    "connections": {
+      "Book Kochi Metro": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Booking Successful?",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "node": "Return Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "When Executed by Another Workflow": {
+        "main": [
+          [
+            {
+              "node": "Book Kochi Metro",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Booking Successful?": {
+        "main": [
+          [
+            {
+              "node": "Return Booking Result",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Return Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveManualExecutions": true,
+      "binaryMode": "separate"
+    },
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "388c3c3f-97a2-4810-9084-8109edaaee9a",
+    "activeVersionId": "388c3c3f-97a2-4810-9084-8109edaaee9a",
+    "versionCounter": 12,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-16T18:00:22.093Z",
+        "createdAt": "2026-07-16T18:00:22.093Z",
+        "role": "workflow:owner",
+        "workflowId": "CHyJtV2PScQ7aZ6B",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-16T06:32:03.744Z",
+    "createdAt": "2026-07-16T06:21:20.062Z",
+    "id": "rqJprcnlNEQ2mXP3",
+    "name": "KMRL Twilio Payload Inspector",
+    "description": null,
+    "active": false,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "kmrl-test",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+        "name": "Webhook",
+        "position": [
+          256,
+          288
+        ],
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "webhookId": "kmrl-test-hook",
+        "notes": "Twilio WhatsApp Webhook Receiver.\nMethod: POST | Path: /kmrl-test\nResponse mode: Respond to Webhook node.\n\nTwilio sends form-urlencoded POST payloads here when the KMRL WhatsApp bot receives a message.\nAll fields (Body, From, To, NumMedia, MediaUrl0, ButtonText, ButtonPayload, Interactive, etc.) arrive as top-level keys under $json.body."
+      },
+      {
+        "parameters": {
+          "jsCode": "// Log the complete incoming Twilio payload to the n8n console\n// Open the browser dev-tools console or check n8n server logs to see this output\nconst items = $input.all();\n\nfor (const item of items) {\n  console.log('=== TWILIO INCOMING PAYLOAD ===');\n  console.log(JSON.stringify(item.json, null, 2));\n  console.log('=== END PAYLOAD ===');\n}\n\n// Return the incoming JSON unchanged \u2014 preserve every field\nreturn items;"
+        },
+        "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+        "name": "Log Raw Payload",
+        "position": [
+          480,
+          288
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "notes": "Debug Logger \u2014 prints the COMPLETE incoming JSON to the console.\nUse browser dev-tools (F12 \u2192 Console) or n8n server logs to inspect.\nReturns the payload unchanged so downstream nodes see all fields."
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "media-check-condition",
+                "leftValue": "={{ $json.body.NumMedia }}",
+                "operator": {
+                  "operation": "notEquals",
+                  "type": "string"
+                },
+                "rightValue": "0"
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 1
+            }
+          },
+          "options": {}
+        },
+        "id": "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
+        "name": "Has Media?",
+        "position": [
+          704,
+          288
+        ],
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "notes": "Checks if the Twilio payload contains media (NumMedia > 0).\nTRUE branch \u2192 download the media file via HTTP Request.\nFALSE branch \u2192 skip media download, go straight to structured logging."
+      },
+      {
+        "parameters": {
+          "url": "={{ $json.body.MediaUrl0 }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "twilioApi",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "file",
+                "outputPropertyName": "media"
+              }
+            }
+          }
+        },
+        "id": "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f80",
+        "name": "Download Media",
+        "position": [
+          928,
+          208
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "credentials": {
+          "twilioApi": {
+            "id": "Oqhyt7ABrzQRs3J4",
+            "name": "Twilio account"
+          }
+        },
+        "notes": "Downloads the media file from Twilio's MediaUrl0.\nUses Basic Auth (Twilio Account SID : Auth Token).\n\n\u26a0\ufe0f You must create an HTTP Basic Auth credential with:\n  - Username: Your Twilio Account SID\n  - Password: Your Twilio Auth Token\nThen assign it to this node.\n\nStores the binary response under the 'media' property.\nThis captures QR codes, images, or any media sent via WhatsApp."
+      },
+      {
+        "parameters": {
+          "jsCode": "// Build a structured log object with every important Twilio field.\n// Unknown/extra fields are preserved in raw_payload.\n\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const body = item.json.body || item.json || {};\n  \n  const structured = {\n    // --- Core message fields ---\n    Body: body.Body || null,\n    ProfileName: body.ProfileName || null,\n    From: body.From || null,\n    To: body.To || null,\n    WaId: body.WaId || null,\n    MessageSid: body.MessageSid || null,\n    SmsSid: body.SmsSid || null,\n    \n    // --- Media fields ---\n    NumMedia: body.NumMedia || '0',\n    MediaContentType0: body.MediaContentType0 || null,\n    MediaUrl0: body.MediaUrl0 || null,\n    \n    // --- WhatsApp Interactive / Button fields ---\n    // These are the KEY fields for reverse-engineering KMRL's \"Book Ticket\" button\n    ButtonText: body.ButtonText || null,\n    ButtonPayload: body.ButtonPayload || null,\n    Interactive: body.Interactive || null,\n    ButtonId: body.ButtonId || null,\n    \n    // --- Reply context fields ---\n    OriginalRepliedMessageSid: body.OriginalRepliedMessageSid || null,\n    \n    // --- Referral fields (for click-to-WhatsApp ads) ---\n    ReferralBody: body.ReferralBody || null,\n    ReferralMediaId: body.ReferralMediaId || null,\n    ReferralSourceId: body.ReferralSourceId || null,\n    ReferralSourceType: body.ReferralSourceType || null,\n    ReferralSourceUrl: body.ReferralSourceUrl || null,\n    \n    // --- Metadata ---\n    _inspected_at: new Date().toISOString(),\n    \n    // --- COMPLETE ORIGINAL PAYLOAD ---\n    // This preserves ALL fields Twilio sends, including any undocumented ones\n    raw_payload: body\n  };\n  \n  results.push({ json: structured });\n}\n\nconsole.log('=== STRUCTURED LOG ===');\nconsole.log(JSON.stringify(results.map(r => r.json), null, 2));\nconsole.log('=== END STRUCTURED LOG ===');\n\nreturn results;"
+        },
+        "id": "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8091",
+        "name": "Build Structured Log",
+        "position": [
+          1152,
+          288
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "notes": "Structured Payload Logger \u2014 extracts every known Twilio WhatsApp field into a clean object.\n\nKey fields for KMRL reverse-engineering:\n\u2022 ButtonText / ButtonPayload / Interactive / ButtonId \u2014 these reveal whether 'Book Ticket' is a WhatsApp Interactive Reply Button or plain text.\n\u2022 OriginalRepliedMessageSid \u2014 helps track reply chains.\n\u2022 raw_payload \u2014 the COMPLETE original payload, preserving unknown/future fields.\n\nDoes NOT rename or transform fields \u2014 keeps Twilio's original naming."
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ JSON.stringify({ success: true }) }}",
+          "options": {}
+        },
+        "id": "f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f809112",
+        "name": "Respond OK",
+        "position": [
+          1376,
+          288
+        ],
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "notes": "Returns { \"success\": true } to Twilio.\nTwilio expects a 200 OK within ~15 seconds, otherwise it retries.\nKeep this response fast and simple."
+      }
+    ],
+    "connections": {
+      "Build Structured Log": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Respond OK",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "Download Media": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Build Structured Log",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "Has Media?": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Download Media",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "index": 0,
+              "node": "Build Structured Log",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "Log Raw Payload": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Has Media?",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "Webhook": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Log Raw Payload",
+              "type": "main"
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate"
+    },
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "5ea7a9f5-8244-4441-857e-6438a61ecb0e",
+    "activeVersionId": null,
+    "versionCounter": 4,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-16T06:21:20.067Z",
+        "createdAt": "2026-07-16T06:21:20.067Z",
+        "role": "workflow:owner",
+        "workflowId": "rqJprcnlNEQ2mXP3",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-14T18:26:17.116Z",
+    "createdAt": "2026-07-13T09:46:55.673Z",
+    "id": "Kb2JJqrQAPvKjlFT",
+    "name": "Anime-Reminder",
+    "description": null,
+    "active": false,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "triggerAtHour": 7
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.3,
+        "position": [
+          0,
+          0
+        ],
+        "id": "561aacf3-8cd7-4f2d-9708-19b54fca01b5",
+        "name": "Schedule Trigger"
+      },
+      {
+        "parameters": {
+          "jsCode": "const animeList = [\n  \"Mushoku Tensei\",\n  \"Solo Leveling\", \n  \"Re:Zero\",\n  \"The 100 Girlfriends Who Really, Really, Really, Really, REALLY Love You\",\n  \"Saga of Tanya the Evil\",  // airing now, S2\n  \"That Time I Got Reincarnated as a Slime\", // airing now S4\n  \"Trapped in a Dating Sim\",\n  \"The World's Strongest RearGuard\"\n];\n\nreturn animeList.map(name => ({ name }));"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          208,
+          0
+        ],
+        "id": "f7922420-b20c-4605-82c0-1b5b2af4bf8c",
+        "name": "Code in JavaScript"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://graphql.anilist.co",
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "jsonHeaders": "{\n  \"Content-Type\": \"application/json\"\n}",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"query\": \"query ($search: String) { Media(search: $search, type: ANIME, sort: START_DATE_DESC) { title { english romaji } status episodes nextAiringEpisode { episode airingAt } } }\",\n  \"variables\": { \"search\": \"{{ $json.name }}\" }\n}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          416,
+          0
+        ],
+        "id": "eb30b9cf-cff4-4bd1-8fb7-203d69589627",
+        "name": "HTTP Request",
+        "executeOnce": false,
+        "maxTries": 3,
+        "onError": "continueErrorOutput",
+        "retryOnFail": true,
+        "waitBetweenTries": 5000
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 3
+            },
+            "conditions": [
+              {
+                "id": "ffed5f4c-eb24-44f8-91e3-ca1d2006c408",
+                "leftValue": "={{ $json.data.Media.status }}",
+                "rightValue": "RELEASING",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              },
+              {
+                "id": "aired-today-start",
+                "leftValue": "={{ $json.data.Media.nextAiringEpisode.airingAt }}",
+                "rightValue": "={{ $now.startOf('day').toSeconds() }}",
+                "operator": {
+                  "type": "number",
+                  "operation": "gte"
+                }
+              },
+              {
+                "id": "aired-today-end",
+                "leftValue": "={{ $json.data.Media.nextAiringEpisode.airingAt }}",
+                "rightValue": "={{ $now.endOf('day').toSeconds() }}",
+                "operator": {
+                  "type": "number",
+                  "operation": "lte"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          624,
+          0
+        ],
+        "id": "f0df226f-a44b-4437-95a5-2ebc2b7c8d3f",
+        "name": "If"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://ntfy.sh/midhun-anime-alerts",
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "jsonHeaders": "{\n  \"Title\": \"New Anime Episode \ud83c\udf8c\",\n  \"Priority\": \"high\",\n  \"Tags\": \"tv\"\n}",
+          "sendBody": true,
+          "contentType": "raw",
+          "rawContentType": "test/plain",
+          "body": "={{ $json.data.Media.title.english ?? $json.data.Media.title.romaji }} - Episode {{ $json.data.Media.nextAiringEpisode.episode }} airs on {{ new Date($json.data.Media.nextAiringEpisode.airingAt * 1000).toLocaleString('en-IN', {timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'}) }}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          832,
+          -96
+        ],
+        "id": "a9579d52-912c-48cb-bce5-2c418f8e6a7e",
+        "name": "HTTP Request1",
+        "maxTries": 3,
+        "retryOnFail": true,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "acd92abf-5bfc-43b2-b761-94ac0bf8a71d",
+        "name": "Send Error Alert",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          624,
+          200
+        ],
+        "parameters": {
+          "body": "={{ 'AniList API failed after retries. Error: ' + ($json.error.message || 'Unknown error') }}",
+          "contentType": "raw",
+          "jsonHeaders": "{\n  \"Title\": \"Anime Reminder Error \u26a0\ufe0f\",\n  \"Priority\": \"high\",\n  \"Tags\": \"warning\"\n}",
+          "method": "POST",
+          "rawContentType": "text/plain",
+          "sendBody": true,
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "url": "https://ntfy.sh/midhun-anime-alerts"
+        }
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Code in JavaScript",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code in JavaScript": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request": {
+        "main": [
+          [
+            {
+              "node": "If",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Send Error Alert",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "If": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": true,
+      "timeSavedMode": "fixed",
+      "callerPolicy": "workflowsFromSameOwner"
+    },
+    "staticData": {
+      "node:Schedule Trigger": {
+        "recurrenceRules": [
+          null
+        ],
+        "recurrenceRuleSignatures": [
+          null
+        ]
+      }
+    },
+    "meta": {
+      "templateCredsSetupCompleted": true,
+      "aiBuilderAssisted": true,
+      "builderVariant": "mcp"
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "1aee4355-827f-4323-b9d1-78610a29ac9e",
+    "activeVersionId": null,
+    "versionCounter": 90,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-13T09:46:55.678Z",
+        "createdAt": "2026-07-13T09:46:55.678Z",
+        "role": "workflow:owner",
+        "workflowId": "Kb2JJqrQAPvKjlFT",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-14T18:36:00.000Z",
+    "createdAt": "2026-07-13T14:58:32.284Z",
+    "id": "BxUWvmXXkiRPlbXb",
+    "name": "MCP Server",
+    "description": null,
+    "active": false,
+    "isArchived": true,
+    "nodes": [
+      {
+        "parameters": {
+          "path": "3f8765d4-4d31-4b44-ad9a-90b184b9297f"
+        },
+        "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+        "typeVersion": 2,
+        "position": [
+          -560,
+          16
+        ],
+        "id": "afaac079-8ec8-4dfc-8b76-f69e01d34aa0",
+        "name": "MCP Server Trigger",
+        "webhookId": "3f8765d4-4d31-4b44-ad9a-90b184b9297f"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://n8n.midhunapi.me/api/v1/workflows",
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "jsonHeaders": "{}",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.workflowData }}\n",
+          "options": {},
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "httpHeaderAuth"
+        },
+        "type": "n8n-nodes-base.httpRequestTool",
+        "typeVersion": 4.4,
+        "position": [
+          -688,
+          240
+        ],
+        "id": "275010f3-acb9-43c0-96af-d4433c03fd21",
+        "name": "Create Workflow",
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NgjUkpe67UKLp1zp",
+            "name": "n8n API Key"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "url": "https://n8n.midhunapi.me/api/v1/workflows",
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "jsonHeaders": "{}",
+          "options": {},
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "httpHeaderAuth"
+        },
+        "type": "n8n-nodes-base.httpRequestTool",
+        "typeVersion": 4.4,
+        "position": [
+          -560,
+          240
+        ],
+        "id": "7108c703-5101-47b0-8ccf-d8ac1b76059a",
+        "name": "List Workflow",
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NgjUkpe67UKLp1zp",
+            "name": "n8n API Key"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "method": "DELETE",
+          "url": "=https://n8n.midhunapi.me/api/v1/workflows/{{ $json.workflowId }}",
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "jsonHeaders": "{}",
+          "options": {},
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "httpHeaderAuth"
+        },
+        "type": "n8n-nodes-base.httpRequestTool",
+        "typeVersion": 4.4,
+        "position": [
+          -432,
+          240
+        ],
+        "id": "8b12e1fe-a2dd-4849-93e1-c2b8c505ed93",
+        "name": "Delete Workflow",
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NgjUkpe67UKLp1zp",
+            "name": "n8n API Key"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "=https://n8n.midhunapi.me/api/v1/workflows/{{ $json.workflowId }}/activate",
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "jsonHeaders": "{}",
+          "options": {},
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "httpHeaderAuth"
+        },
+        "type": "n8n-nodes-base.httpRequestTool",
+        "typeVersion": 4.4,
+        "position": [
+          -304,
+          240
+        ],
+        "id": "c83ba936-064c-452e-b678-0edddf8ae29b",
+        "name": "Activate Workflow",
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NgjUkpe67UKLp1zp",
+            "name": "n8n API Key"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Create Workflow": {
+        "ai_tool": [
+          [
+            {
+              "node": "MCP Server Trigger",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "List Workflow": {
+        "ai_tool": [
+          [
+            {
+              "node": "MCP Server Trigger",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Delete Workflow": {
+        "ai_tool": [
+          [
+            {
+              "node": "MCP Server Trigger",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Activate Workflow": {
+        "ai_tool": [
+          [
+            {
+              "node": "MCP Server Trigger",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false,
+      "timeSavedMode": "fixed",
+      "callerPolicy": "workflowsFromSameOwner"
+    },
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "d9f61b5c-d656-4ee5-b4bf-85cb826f13c7",
+    "activeVersionId": null,
+    "versionCounter": 52,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-13T14:58:32.288Z",
+        "createdAt": "2026-07-13T14:58:32.288Z",
+        "role": "workflow:owner",
+        "workflowId": "BxUWvmXXkiRPlbXb",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-15T10:33:47.034Z",
+    "createdAt": "2026-07-14T15:59:55.171Z",
+    "id": "bwJLXyMEDUnElEfA",
+    "name": "Anime Reminder V2",
+    "description": "Advanced anime reminder workflow with error handling for AniList API. Checks every 3 hours for new episodes, new seasons, and ended shows. Falls back to hardcoded list if AniList requests fail.",
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "hours",
+                "hoursInterval": 3
+              }
+            ]
+          }
+        },
+        "id": "2c17f7d5-33e8-4ed2-837d-ae96ff5c0325",
+        "name": "Every 3 Hours",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.3,
+        "position": [
+          0,
+          96
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "get",
+          "dataTableId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "9PTzk7SS5bbWdAZ7"
+          },
+          "returnAll": true
+        },
+        "id": "23c097db-2d1a-4584-a419-efaf077bae47",
+        "name": "Get Tracked Anime",
+        "type": "n8n-nodes-base.dataTable",
+        "typeVersion": 1.1,
+        "position": [
+          224,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const animeList = [\n  \"Mushoku Tensei\",\n  \"Solo Leveling\", \n  \"Re:Zero\",\n  \"The 100 Girlfriends Who Really, Really, Really, Really, REALLY Love You\",\n  \"Saga of Tanya the Evil\",\n  \"That Time I Got Reincarnated as a Slime\",\n  \"Trapped in a Dating Sim\",\n  \"The World's Strongest RearGuard\"\n];\n\nreturn animeList.map(name => ({ name, source: 'hardcoded' }));"
+        },
+        "id": "e05be919-0adb-4491-b8e5-e3efef6f327d",
+        "name": "Build Hardcoded List",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          224,
+          192
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://graphql.anilist.co",
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "jsonHeaders": "{ \"Content-Type\": \"application/json\" }",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n        \"query\": \"query ($search: String) { Media(search: $search, type: ANIME, sort: START_DATE_DESC) { id title { english romaji } status episodes nextAiringEpisode { episode airingAt } season seasonYear format relations { edges { relationType node { id title { english romaji } format season seasonYear status nextAiringEpisode { episode airingAt } } } } } }\",\n        \"variables\": { \"search\": \"{{ $json.name }}\" }\n      }",
+          "options": {}
+        },
+        "id": "5da8f552-fedb-4c78-8a67-35cb0002e929",
+        "name": "Search AniList",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          448,
+          192
+        ],
+        "maxTries": 3,
+        "retryOnFail": true,
+        "waitBetweenTries": 5000,
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  // Check if the request succeeded\n  if (item.json && item.json.data && item.json.data.Media) {\n    const media = item.json.data.Media;\n    results.push({\n      json: {\n        anime_id: media.id,\n        title: media.title.english || media.title.romaji,\n        title_romaji: media.title.romaji,\n        status: media.status,\n        episodes: media.episodes,\n        next_episode: media.nextAiringEpisode?.episode || null,\n        next_airing_at: media.nextAiringEpisode?.airingAt || null,\n        season: media.season,\n        season_year: media.seasonYear,\n        format: media.format,\n        source: 'hardcoded',\n        relations: media.relations?.edges || []\n      }\n    });\n  }\n  // If request failed, we skip this item (it won't be processed further)\n}\n\nreturn results;"
+        },
+        "id": "c6ec0c77-1672-4645-b69a-7afe84a401d5",
+        "name": "Extract Search Results",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          672,
+          96
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const allAnime = $input.all();\nconst trackedAnime = $('Get Tracked Anime').all();\nconst now = Math.floor(Date.now() / 1000);\nconst todayStart = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);\nconst todayEnd = Math.floor(new Date().setHours(23, 59, 59, 999) / 1000);\n\n// Build tracker map\nconst trackerMap = {};\nfor (const track of trackedAnime) {\n  trackerMap[track.json.anime_id] = track.json;\n}\n\nconst notifications = [];\n\nfor (const anime of allAnime) {\n  const data = anime.json;\n  const tracked = trackerMap[data.anime_id];\n  \n  // Check for new episode airing today\n  if (data.status === 'RELEASING' && data.next_airing_at) {\n    if (data.next_airing_at >= todayStart && data.next_airing_at <= todayEnd) {\n      const lastNotified = tracked?.last_notified_episode || 0;\n      if (data.next_episode > lastNotified) {\n        const airDate = new Date(data.next_airing_at * 1000);\n        notifications.push({\n          json: {\n            notification_type: 'episode',\n            title: data.title,\n            episode: data.next_episode,\n            air_date: airDate.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),\n            link: 'https://anilist.co/anime/' + data.anime_id,\n            tracker_update: {\n              anime_id: data.anime_id,\n              title: data.title,\n              last_notified_episode: data.next_episode,\n              status: data.status,\n              current_season: data.season_year,\n              last_checked: new Date().toISOString()\n            }\n          }\n        });\n      }\n    }\n  }\n  \n  // Check for new season (sequel)\n  if (data.relations) {\n    for (const relation of data.relations) {\n      if (relation.relationType === 'SEQUEL') {\n        const sequel = relation.node;\n        if (sequel.status === 'RELEASING' || sequel.status === 'NOT_YET_RELEASED') {\n          const sequelTracked = trackerMap[sequel.id];\n          if (!sequelTracked) {\n            // New season detected!\n            notifications.push({\n              json: {\n                notification_type: 'new_season',\n                title: sequel.title.english || sequel.title.romaji,\n                parent_title: data.title,\n                season: sequel.season + ' ' + sequel.season_year,\n                link: 'https://anilist.co/anime/' + sequel.id,\n                tracker_update: {\n                  anime_id: sequel.id,\n                  title: sequel.title.english || sequel.title.romaji,\n                  last_notified_episode: 0,\n                  status: sequel.status,\n                  current_season: sequel.season_year,\n                  last_checked: new Date().toISOString()\n                }\n              }\n            });\n          }\n        }\n      }\n    }\n  }\n  \n  // Check for season ended\n  if (data.status === 'FINISHED' && tracked && tracked.status === 'RELEASING') {\n    notifications.push({\n      json: {\n        notification_type: 'season_ended',\n        title: data.title,\n        episodes: data.episodes,\n        link: 'https://anilist.co/anime/' + data.anime_id,\n        tracker_update: {\n          anime_id: data.anime_id,\n          title: data.title,\n          last_notified_episode: data.last_notified_episode || 0,\n          status: data.status,\n          current_season: data.season_year,\n          last_checked: new Date().toISOString()\n        }\n      }\n    });\n  }\n}\n\nreturn notifications;"
+        },
+        "id": "921ae6a9-8b32-47e0-bacf-2d62600c3b39",
+        "name": "Process & Determine Notifications",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          896,
+          192
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://ntfy.sh/midhun-anime-alerts",
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "jsonHeaders": "={\n        \"Title\": \"{{ $json.notification_type === 'episode' ? 'New Anime Episode \ud83c\udf8c' : $json.notification_type === 'new_season' ? 'New Anime Season \ud83c\udf8c' : 'Anime Season Complete \ud83c\udf8c' }}\",\n        \"Priority\": \"high\",\n        \"Tags\": \"{{ $json.notification_type === 'episode' ? 'tv' : $json.notification_type === 'new_season' ? 'tada' : 'white_check_mark' }}\"\n      }",
+          "sendBody": true,
+          "contentType": "raw",
+          "rawContentType": "text/plain",
+          "body": "={{ $json.notification_type === 'episode' ? $json.title + ' - Episode ' + $json.episode + ' airs on ' + $json.air_date + '\\n' + $json.link : $json.notification_type === 'new_season' ? 'New Season! ' + $json.title + ' (sequel to ' + $json.parent_title + ')\\nSeason: ' + $json.season + '\\n' + $json.link : $json.title + ' has finished airing (' + $json.episodes + ' episodes)\\n' + $json.link }}",
+          "options": {}
+        },
+        "id": "fd60e4ea-0c15-4e76-8780-4eed41e520da",
+        "name": "Send Notification",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          1120,
+          192
+        ],
+        "maxTries": 3,
+        "retryOnFail": true,
+        "waitBetweenTries": 5000
+      },
+      {
+        "parameters": {
+          "jsCode": "const allNotifications = $('Process & Determine Notifications').all();\nconst updates = [];\n\nfor (const notif of allNotifications) {\n  if (notif.json.tracker_update) {\n    updates.push({ json: notif.json.tracker_update });\n  }\n}\n\nreturn updates;"
+        },
+        "id": "0eb40f71-4d7c-47b0-acc4-2a66e939ceb6",
+        "name": "Collect Tracker Updates",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1344,
+          192
+        ],
+        "executeOnce": true
+      },
+      {
+        "parameters": {
+          "operation": "upsert",
+          "dataTableId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "9PTzk7SS5bbWdAZ7"
+          },
+          "filters": {
+            "conditions": [
+              {
+                "keyName": "anime_id",
+                "keyValue": "={{ $json.anime_id }}"
+              }
+            ]
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "anime_id": "={{ $json.anime_id }}",
+              "title": "={{ $json.title }}",
+              "last_notified_episode": "={{ $json.last_notified_episode }}",
+              "status": "={{ $json.status }}",
+              "current_season": "={{ $json.current_season }}",
+              "last_checked": "={{ $json.last_checked }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "anime_id",
+                "displayName": "anime_id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "title",
+                "displayName": "title",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "last_notified_episode",
+                "displayName": "last_notified_episode",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "status",
+                "displayName": "status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "current_season",
+                "displayName": "current_season",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "last_checked",
+                "displayName": "last_checked",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "id": "b9449c64-6d23-479c-a8f3-ab24ffacd62f",
+        "name": "Update Tracker",
+        "type": "n8n-nodes-base.dataTable",
+        "typeVersion": 1.1,
+        "position": [
+          1568,
+          192
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://ntfy.sh/midhun-anime-alerts",
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "jsonHeaders": "{\n  \"Title\": \"Anime Reminder Error \u26a0\ufe0f\",\n  \"Priority\": \"high\",\n  \"Tags\": \"warning\"\n}",
+          "sendBody": true,
+          "contentType": "raw",
+          "rawContentType": "text/plain",
+          "body": "={{ 'Anime V2 Workflow failed. AniList Error: ' + ($json.error.message || 'Unknown error') }}",
+          "options": {}
+        },
+        "id": "0288b891-abe6-43e9-a9f7-35d303110cc2",
+        "name": "Send Error Alert",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          672,
+          288
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "upsert",
+          "dataTableId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "9PTzk7SS5bbWdAZ7"
+          },
+          "filters": {
+            "conditions": [
+              {
+                "keyName": "anime_id",
+                "keyValue": "={{ $json.anime_id }}"
+              }
+            ]
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "anime_id": "={{ $json.anime_id }}",
+              "current_season": "={{ $json.season_year }}",
+              "last_checked": "={{ new Date().toISOString() }}",
+              "status": "={{ $json.status }}",
+              "title": "={{ $json.title }}",
+              "last_notified_episode": 0
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "anime_id",
+                "displayName": "anime_id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "title",
+                "displayName": "title",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "last_notified_episode",
+                "displayName": "last_notified_episode",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "status",
+                "displayName": "status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "current_season",
+                "displayName": "current_season",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "last_checked",
+                "displayName": "last_checked",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "id": "20caa595-d6a0-40bf-a4bd-63867d24052b",
+        "name": "Sync All Anime",
+        "type": "n8n-nodes-base.dataTable",
+        "typeVersion": 1.1,
+        "position": [
+          896,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Every 3 Hours": {
+        "main": [
+          [
+            {
+              "node": "Get Tracked Anime",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Build Hardcoded List",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Hardcoded List": {
+        "main": [
+          [
+            {
+              "node": "Search AniList",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Search AniList": {
+        "main": [
+          [
+            {
+              "node": "Extract Search Results",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Send Error Alert",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Extract Search Results": {
+        "main": [
+          [
+            {
+              "node": "Process & Determine Notifications",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Sync All Anime",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Process & Determine Notifications": {
+        "main": [
+          [
+            {
+              "node": "Send Notification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Notification": {
+        "main": [
+          [
+            {
+              "node": "Collect Tracker Updates",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Collect Tracker Updates": {
+        "main": [
+          [
+            {
+              "node": "Update Tracker",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "availableInMCP": true,
+      "binaryMode": "separate"
+    },
+    "staticData": {
+      "node:Every 3 Hours": {
+        "recurrenceRules": [
+          12
+        ],
+        "recurrenceRuleSignatures": [
+          "hours:3"
+        ]
+      }
+    },
+    "meta": {
+      "aiBuilderAssisted": true,
+      "builderVariant": "mcp"
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "16d0dc04-439f-4983-ac6a-f71ba10b1469",
+    "activeVersionId": "59a317ff-2d00-4ca0-a54e-f14dadf2ff79",
+    "versionCounter": 9,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-14T15:59:55.175Z",
+        "createdAt": "2026-07-14T15:59:55.175Z",
+        "role": "workflow:owner",
+        "workflowId": "bwJLXyMEDUnElEfA",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-18T07:44:02.627Z",
+    "createdAt": "2026-07-17T18:24:36.049Z",
+    "id": "xfeqAhfLhWYUABBf",
+    "name": "Agent: WhatsApp Brain",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {},
+        "id": "e4b6b3ea-1234-471c-bc81-76f1494d8f34",
+        "name": "Execute Workflow Trigger",
+        "position": [
+          880,
+          176
+        ],
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "74e62363-03db-491c-b4c1-7eba55e1ba8a",
+                "leftValue": "={{ $json.isTextOnly }}",
+                "operator": {
+                  "operation": "true",
+                  "singleValue": true,
+                  "type": "boolean"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            }
+          },
+          "options": {}
+        },
+        "id": "f4d1fbe8-c218-479f-83c8-a11f1043d3df",
+        "name": "Text Message?",
+        "position": [
+          1104,
+          176
+        ],
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2
+      },
+      {
+        "parameters": {
+          "options": {
+            "maxIterations": 20,
+            "passthroughBinaryImages": false,
+            "passthroughBinaryPdfs": false,
+            "returnIntermediateSteps": false,
+            "systemMessage": "You are MetroMind, a friendly, professional Kochi Metro assistant on WhatsApp. Reply in concise plain text only.\n\n### 1. Handling Location Pins\nIf the user ONLY shares their location (e.g. \"[User shared a location: lat, lon]\"), DO NOT call any tools. Acknowledge you received it and immediately ask where they would like to travel to. \n\n### 2. Planning Trips\nWhen the user asks to plan a trip, check routes, or requests travel info, use the Plan Trip tool.\n- Pass the EXACT place names the user provided. DO NOT call Station Knowledge for trip planning.\n- If the user has shared their location previously, you MUST extract the exact latitude and longitude numbers from that memory and pass them to the tool. If no location was shared, pass an empty string.\n- The Plan Trip tool returns a fully formatted response. Output this exact response directly to the user.\n- If the tool returns an error message inside its output, tell the user that specific error. ONLY say the routing service is down if the tool fails to run entirely. NEVER invent generic errors if you didn't even call a tool.\n\n### 3. Booking Tickets\n- Collect origin, destination, passengers, and booking URL. Call Book Ticket only when all four exist. \n- On success, present it EXACTLY like this (with the URL on its own line, no markdown around it):\n\n\ud83d\ude87 *Your Kochi Metro ticket is booked!*\n\n\ud83d\udd39 *Route:* <origin> \u2192 <destination>\n\ud83d\udd39 *Passengers:* <count>\n\ud83d\udd39 *Fare:* <fare if available>\n\n\ud83d\udc47 Tap below to pay\n\n\ud83d\udcb3 *Pay using Google Pay*\n<payment_url>\\n\\n### 4. Memory & Tool Usage (CRITICAL)\\n- NEVER rely on conversation memory to calculate routes, fares, timings, or tickets.\\n- ALWAYS call the appropriate tool for every new request, even if you answered a similar question previously. Memory is ONLY for context (like remembering the user's location), NOT for bypassing tool execution."
+          },
+          "promptType": "define",
+          "text": "={{ $json.userMessage }}"
+        },
+        "id": "29daf3bf-5d28-48aa-b90b-0b69e7ace360",
+        "name": "MetroMind AI Agent",
+        "position": [
+          1776,
+          48
+        ],
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "notes": "The only decision-maker. Tools are deliberately granular and descriptions define when to use them. Memory is keyed by the sender\u2019s WhatsApp number."
+      },
+      {
+        "parameters": {
+          "description": "Check if a name is a valid Kochi Metro station. ONLY use this to verify station names. DO NOT use this for general places, landmarks, or addresses (like malls, hospitals, beaches) - the Plan Trip tool handles places automatically. If the user says 'take me to X', do NOT use this tool to verify X.",
+          "jsCode": "const stations = ['Aluva','Pulinchodu','Companypady','Ambattukavu','Muttom','Kalamassery','Cochin University','Pathadipalam','Edappally','Changampuzha Park','Palarivattom','JLN Stadium','Kaloor','Lissie','MG Road','Maharaja\u2019s College','Ernakulam South','Kadavanthra','Elamkulam','Vyttila','Thaikoodam','Petta','Vadakkekotta','SN Junction','Tripunithura'];\nconst aliases = {'edapally':'Edappally','edappaly':'Edappally','m g road':'MG Road','mgroad':'MG Road','maharajas':'Maharaja\u2019s College','maharajas college':'Maharaja\u2019s College','ernakulam south':'Ernakulam South','south':'Ernakulam South','jln':'JLN Stadium','stadium':'JLN Stadium','sn junction':'SN Junction','tripunithura terminal':'Tripunithura'};\nconst norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();\nconst q = norm(query.station); const exact = aliases[q] || stations.find(s => norm(s) === q);\nif (exact) return JSON.stringify({resolved: exact, confidence: 'high'});\nconst score = s => { const a=norm(s); let m=0; for (const c of q) if(a.includes(c)) m++; return m/Math.max(a.length,q.length,1); };\nconst candidates = stations.map(s=>({station:s,score:score(s)})).sort((a,b)=>b.score-a.score).slice(0,3);\nreturn JSON.stringify({resolved: candidates[0]?.score >= 0.45 ? candidates[0].station : null, confidence: candidates[0]?.score >= 0.7 ? 'medium':'low', candidates});",
+          "specifyInputSchema": true,
+          "jsonSchemaExample": "{\"station\":\"edapally\"}"
+        },
+        "id": "cce671a2-f7a9-44c7-ac49-1ae8931cc928",
+        "name": "Station Knowledge",
+        "position": [
+          2096,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolCode",
+        "typeVersion": 1.3
+      },
+      {
+        "parameters": {
+          "description": "Extract possible station names, passenger count, booking URL, and time expressions from a user message. Use for ambiguous booking or timing requests.",
+          "jsCode": "const text=String(query.text||''); const url=(text.match(/https?:\\/\\/[^\\s]+/i)||[])[0]||null; const passengers=Number((text.match(/\\b(\\d+)\\s*(passenger|people|persons|tickets?)\\b/i)||[])[1])||null; const time=(text.match(/\\b(today|tomorrow|tonight|in\\s+\\d+\\s+(minutes?|hours?)|\\d{1,2}[:.]\\d{2}(?:\\s?[ap]m)?|\\d{1,2}\\s?[ap]m)\\b/i)||[])[0]||null; return JSON.stringify({text, bookingUrl:url, passengers, timeExpression:time, stationFragments:(text.match(/(?:from|to)\\s+([A-Za-z .\u2019'-]+)/gi)||[])});",
+          "specifyInputSchema": true,
+          "jsonSchemaExample": "{\"text\":\"2 passengers from Aluva to MG Road tomorrow at 8\"}"
+        },
+        "id": "24009702-e933-46a6-b892-cbf5d0e2c0ab",
+        "name": "Text Parser",
+        "position": [
+          2224,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolCode",
+        "typeVersion": 1.3
+      },
+      {
+        "parameters": {
+          "outputFieldName": "currentDateTime",
+          "options": {
+            "timezone": "Asia/Kolkata"
+          }
+        },
+        "id": "ebfce732-7508-467a-89c6-1ed53fa906df",
+        "name": "Current Date & Time",
+        "position": [
+          1840,
+          272
+        ],
+        "type": "n8n-nodes-base.dateTimeTool",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {},
+        "id": "92d56be8-c787-42ed-9ff7-909c013f5db5",
+        "name": "Calculator",
+        "position": [
+          1712,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+        "typeVersion": 1
+      },
+      {
+        "parameters": {
+          "url": "https://api.weather.example/forecast",
+          "options": {
+            "response": {},
+            "timeout": 5000
+          },
+          "optimizeResponse": true
+        },
+        "id": "949a8d05-5101-4af9-9fc3-b0983b8ad449",
+        "maxTries": 2,
+        "name": "Weather Tool (stub)",
+        "position": [
+          2352,
+          272
+        ],
+        "retryOnFail": true,
+        "type": "n8n-nodes-base.httpRequestTool",
+        "typeVersion": 4.4,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const input = $input.item.json; const pre = $('Execute Workflow Trigger').first().json; const message = String(input.output ?? 'Sorry, I could not prepare a response. Please try again.').trim(); return [{ json: { phoneNumber: pre.phoneNumber, outboundMessage: message.slice(0, 1500), loggedAt: $now.toISO(), userMessage: pre.userMessage, responseTimeMs: Date.now() - new Date(pre.receivedAt).getTime(), intent: 'assistant_response', origin: '', destination: '' } }];"
+        },
+        "id": "3d34125a-9a35-4caf-b6d8-78ed72bd883d",
+        "name": "Format Agent Reply",
+        "position": [
+          2560,
+          48
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "return [{ json: { phoneNumber: $json.phoneNumber, outboundMessage: 'Sorry, MetroMind currently supports text messages only. Please send your request as a text message.' } }];"
+        },
+        "id": "85444b94-abc5-4c4c-acbc-64ad80170b53",
+        "name": "Unsupported Media Reply",
+        "position": [
+          2560,
+          304
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "description": "Book a Kochi Metro ticket. Use only when the user has provided ALL four required values: a valid booking URL (from prutech.org), an origin station, a destination station, and a passenger count. Do NOT call this tool unless all four are confirmed \u2014 never invent a missing value. Returns the booking result including a payment URL or deeplink on success, or an error message on failure.",
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "CHyJtV2PScQ7aZ6B"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "schema": [
+              {
+                "display": true,
+                "displayName": "url",
+                "id": "url",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "origin",
+                "id": "origin",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "destination",
+                "id": "destination",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "passengers",
+                "id": "passengers",
+                "type": "number"
+              }
+            ],
+            "value": {
+              "destination": "={{ $fromAI('destination_station', 'The validated destination station name (e.g. Palarivattom, Vyttila)', 'string') }}",
+              "origin": "={{ $fromAI('origin_station', 'The validated origin station name (e.g. Aluva, MG Road)', 'string') }}",
+              "passengers": "={{ $fromAI('passenger_count', 'Number of passengers as an integer between 1 and 10', 'number') }}",
+              "url": "={{ $fromAI('booking_url', 'The KMRL booking URL from prutech.org supplied by the user. Never invent this.', 'string') }}"
+            }
+          }
+        },
+        "id": "ae54b0c0-8a8a-4888-b835-81df83252426",
+        "name": "Book Ticket",
+        "position": [
+          1584,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2
+      },
+      {
+        "parameters": {
+          "model": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+          "options": {}
+        },
+        "id": "d42f5caa-01bc-4d44-ba38-c2339d323afc",
+        "name": "NVIDIA Nemotron Chat Model",
+        "position": [
+          1328,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.lmChatNvidia",
+        "typeVersion": 1,
+        "credentials": {
+          "nvidiaApi": {
+            "id": "TbaTz8LXFvQujHk2",
+            "name": "NVIDIA Nemotron account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "description": "Plan a trip on the Kochi Metro, find routes, calculate fares, and get next trains. Use this tool for ANY destination or origin (including stations, landmarks, addresses, malls, etc). The tool automatically handles geocoding and finding the nearest station.",
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "8BzKbQxyYXVwtX0K"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "schema": [
+              {
+                "display": true,
+                "displayName": "userMessage",
+                "id": "userMessage",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "latitude",
+                "id": "latitude",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "longitude",
+                "id": "longitude",
+                "type": "string"
+              },
+              {
+                "display": true,
+                "displayName": "phoneNumber",
+                "id": "phoneNumber",
+                "type": "string"
+              }
+            ],
+            "value": {
+              "latitude": "={{ $fromAI('latitude', 'The latitude of the user if they shared their location recently, else empty string', 'string') }}",
+              "longitude": "={{ $fromAI('longitude', 'The longitude of the user if they shared their location recently, else empty string', 'string') }}",
+              "phoneNumber": "={{ $('Execute Workflow Trigger').first().json.phoneNumber }}",
+              "userMessage": "={{ $fromAI(\"query\", \"The exact destination and origin requested. CRITICAL: Use their exact words for places (e.g. if they say \\\"lulu mall\\\", output \\\"lulu mall\\\"). DO NOT replace landmarks with station names! If they provide a location, leave it exactly as they typed it.\") }}"
+            }
+          }
+        },
+        "id": "5fe99469-f91c-4000-b3e4-0638c2f0f1b1",
+        "name": "Plan Trip",
+        "position": [
+          1968,
+          272
+        ],
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2
+      },
+      {
+        "parameters": {
+          "sessionIdType": "customKey",
+          "sessionKey": "={{ $('Execute Workflow Trigger').first().json.phoneNumber }}",
+          "contextWindowLength": 20
+        },
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.4,
+        "position": [
+          1456,
+          272
+        ],
+        "id": "af685fe9-9091-48c1-b47a-d55a0a8681c1",
+        "name": "Simple Memory"
+      },
+      {
+        "parameters": {
+          "authentication": "webhook",
+          "content": "={{ $json.outboundMessage }}",
+          "options": {}
+        },
+        "id": "a4d96dcd-a6a8-4a06-b6d8-cd73a3e9791f",
+        "name": "Discord Webhook Send",
+        "position": [
+          2784,
+          176
+        ],
+        "type": "n8n-nodes-base.discord",
+        "typeVersion": 2,
+        "webhookId": "81e16414-a4c2-4160-8716-6f39a9885ae8",
+        "credentials": {
+          "discordWebhookApi": {
+            "id": "dHryeTl5pCCx9SnN",
+            "name": "Discord Webhook account"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Book Ticket": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Calculator": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Current Date & Time": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Text Message?",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "Format Agent Reply": {
+        "main": [
+          [
+            {
+              "node": "Discord Webhook Send",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "MetroMind AI Agent": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Format Agent Reply",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "NVIDIA Nemotron Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_languageModel"
+            }
+          ]
+        ]
+      },
+      "Plan Trip": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Station Knowledge": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Text Message?": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "index": 0,
+              "node": "Unsupported Media Reply",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "Text Parser": {
+        "ai_tool": [
+          [
+            {
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Unsupported Media Reply": {
+        "main": [
+          [
+            {
+              "node": "Discord Webhook Send",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Weather Tool (stub)": {
+        "ai_tool": [
+          [
+            {
+              "index": 0,
+              "node": "MetroMind AI Agent",
+              "type": "ai_tool"
+            }
+          ]
+        ]
+      },
+      "Simple Memory": {
+        "ai_memory": [
+          [
+            {
+              "node": "MetroMind AI Agent",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveManualExecutions": true,
+      "saveExecutionProgress": true,
+      "binaryMode": "separate"
+    },
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "5977479d-6bfc-4c9f-8241-5e44bacd0aec",
+    "activeVersionId": "5977479d-6bfc-4c9f-8241-5e44bacd0aec",
+    "versionCounter": 26,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-17T18:24:36.054Z",
+        "createdAt": "2026-07-17T18:24:36.054Z",
+        "role": "workflow:owner",
+        "workflowId": "xfeqAhfLhWYUABBf",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-18T06:10:05.489Z",
+    "createdAt": "2026-07-16T18:41:49.677Z",
+    "id": "F2mHsGk4JYlyhH32",
+    "name": "MetroMind \u2014 WhatsApp Agent",
+    "description": "MetroMind is a modular WhatsApp AI agent for Kochi Metro, using OpenRouter GPT-4, Simple Memory, tool calling, resilient media handling, and optional Google Sheets logging.",
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "options": {},
+          "path": "twilio-whatsapp",
+          "responseMode": "onReceived"
+        },
+        "id": "3e7aaffb-4f88-4f6e-9d21-65ae8813b7e1",
+        "name": "Twilio WhatsApp Trigger",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          656,
+          656
+        ],
+        "webhookId": "020244c1-475d-4694-a309-065b4ba953d8",
+        "credentials": {
+          "twilioApi": {
+            "id": "Oqhyt7ABrzQRs3J4",
+            "name": "Twilio account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const item = $input.item.json.data || $input.item.json.body || $input.item.json;\n\nconst normalizeNumber = val =>\n  String(val ?? '').replace(/^whatsapp:/i, '');\n\nconst rawMessage = String(item?.body ?? item?.Body ?? '').trim();\nconst mediaCount = Number(item?.numMedia ?? item?.NumMedia ?? 0);\nconst phoneNumber = normalizeNumber(item?.from ?? item?.From ?? '');\nconst twilioFrom = normalizeNumber(item?.to ?? item?.To ?? '');\nconst latitude = (item?.latitude ?? item?.Latitude) ? parseFloat(item?.latitude ?? item?.Latitude) : null;\nconst longitude = (item?.longitude ?? item?.Longitude) ? parseFloat(item?.longitude ?? item?.Longitude) : null;\n\nlet userMessage = rawMessage;\nif (latitude !== null && longitude !== null) {\n  if (!userMessage) {\n    userMessage = `[User shared a location: ${latitude}, ${longitude}]`;\n  } else {\n    userMessage += `\\n[User shared a location: ${latitude}, ${longitude}]`;\n  }\n}\n\nreturn [{\n  json: {\n    phoneNumber,\n    twilioFrom,\n    userMessage,\n    mediaCount,\n    isTextOnly: mediaCount === 0 && userMessage.length > 0,\n    hasLocation: latitude !== null && longitude !== null,\n    latitude,\n    longitude,\n    receivedAt: item?.timestamp ?? $now.toISO(),\n  }\n}];"
+        },
+        "id": "8f2ca6cb-1756-4fd9-aa2b-ddf152529b82",
+        "name": "Preprocess Message",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          880,
+          656
+        ],
+        "notes": "Normalizes Twilio\u2019s inbound event once, preserves the sender identity, and deliberately keeps media out of the AI context."
+      },
+      {
+        "id": "8a809647-8b30-4ffd-b102-32897282b1d6",
+        "name": "Discord Webhook Thinking",
+        "type": "n8n-nodes-base.discord",
+        "typeVersion": 2,
+        "position": [
+          1104,
+          656
+        ],
+        "parameters": {
+          "authentication": "webhook",
+          "content": "\ud83d\ude87 *MetroMind is thinking...*",
+          "operation": "sendLegacy"
+        },
+        "credentials": {
+          "discordWebhookApi": {
+            "id": "dHryeTl5pCCx9SnN",
+            "name": "Discord Webhook account"
+          }
+        },
+        "webhookId": "23c86d1b-a740-404a-ae14-c7c2e08fb315"
+      },
+      {
+        "id": "d4fa8e16-7d5d-41c8-935c-b1eca9ddae1e",
+        "name": "Call Brain Workflow",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.3,
+        "position": [
+          1328,
+          656
+        ],
+        "parameters": {
+          "mode": "once",
+          "options": {
+            "waitForSubWorkflow": false
+          },
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "xfeqAhfLhWYUABBf"
+          },
+          "workflowInputs": {
+            "mappingMode": "passThrough"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Twilio WhatsApp Trigger": {
+        "main": [
+          [
+            {
+              "node": "Preprocess Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Preprocess Message": {
+        "main": [
+          [
+            {
+              "node": "Discord Webhook Thinking",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Call Brain Workflow",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "availableInMCP": true,
+      "binaryMode": "separate"
+    },
+    "staticData": {
+      "node:Twilio WhatsApp Trigger": {
+        "sinkId": "DG56eadd4b5216c917b8e7840f8966304f",
+        "subscriptionId": "DF6313f61ad47ffcb54197f789084b9910"
+      }
+    },
+    "meta": {
+      "aiBuilderAssisted": true,
+      "builderVariant": "mcp",
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "71c2fedf-53dc-478b-85fc-497001493c1f",
+    "activeVersionId": "71c2fedf-53dc-478b-85fc-497001493c1f",
+    "versionCounter": 61,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-16T18:41:49.680Z",
+        "createdAt": "2026-07-16T18:41:49.680Z",
+        "role": "workflow:owner",
+        "workflowId": "F2mHsGk4JYlyhH32",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-18T06:59:04.458Z",
+    "createdAt": "2026-07-17T17:28:50.826Z",
+    "id": "8BzKbQxyYXVwtX0K",
+    "name": "Tool: Trip Planner",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {},
+        "id": "11111111-1111-1111-1111-111111111111",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          -64
+        ]
+      },
+      {
+        "parameters": {
+          "options": {
+            "systemMessage": "You are a transit intent extractor for Kochi Metro, Kerala, India.\n\nExtract travel intent from the user message and return ONLY a raw JSON object. No markdown. No backticks. No explanation. Just JSON.\n\nKochi Metro stations \u2014 if the user mentions any, use EXACT name from this list:\nAluva, Pulinchodu, Companypady, Ambattukavu, Muttom, Kalamassery, Cochin University, Pathadipalam, Edapally, Changampuzha Park, Palarivattom, JLN Stadium, Kaloor, Town Hall, MG Road, Maharajas College, Ernakulam South, Kadavanthra, Elamkulam, Vyttila, Thykoodam, Pettah, Vadakkekotta, SN Junction, Tripunithura\n\nReturn this exact JSON:\n{\n  \"destination_place\": string,\n  \"destination_is_station\": boolean,\n  \"origin_place\": string or null,\n  \"origin_is_station\": boolean,\n  \"passengers\": number,\n  \"requested_arrival_time\": string or null,\n  \"requested_departure_time\": string or null,\n  \"is_location_shared\": boolean\n}\n\nRules:\n- destination_place: where they want to go. Metro station \u2192 exact name from list. Real place \u2192 common name only, no address.\n- destination_is_station: true only if destination is one of the 25 stations above\n- origin_place: null if they shared GPS. Only fill if they explicitly named an origin.\n- origin_is_station: true only if origin is one of the 25 stations\n- passengers: default 1 if not mentioned\n- requested_arrival_time: 24hr format like 22:30 or null if they want to arrive BY a time\n- requested_departure_time: 24hr format like 08:00 or null if they want to leave AT a certain time (e.g., tomorrow at 8am -> \"08:00\")\n- is_location_shared: true if message contains coordinates, mentions sharing location, or if [Coordinates provided: Yes] is present\n\nExamples:\nInput: I want to go to Lulu Mall, 2 people\nOutput: {\"destination_place\":\"Lulu Mall\",\"destination_is_station\":false,\"origin_place\":null,\"origin_is_station\":false,\"passengers\":2,\"requested_arrival_time\":null,\"is_location_shared\":false}\n\nInput: Take me from Aluva to MG Road\nOutput: {\"destination_place\":\"MG Road\",\"destination_is_station\":true,\"origin_place\":\"Aluva\",\"origin_is_station\":true,\"passengers\":1,\"requested_arrival_time\":null,\"is_location_shared\":false}\n\nInput: Need to reach General Hospital by 10:30pm, 3 people\nOutput: {\"destination_place\":\"General Hospital Kochi\",\"destination_is_station\":false,\"origin_place\":null,\"origin_is_station\":false,\"passengers\":3,\"requested_arrival_time\":\"22:30\",\"requested_departure_time\":null,\"is_location_shared\":false}\n\nInput: Tomorrow at 8am from Aluva to Lulu Mall\nOutput: {\"destination_place\":\"Lulu Mall\",\"destination_is_station\":false,\"origin_place\":\"Aluva\",\"origin_is_station\":true,\"passengers\":1,\"requested_arrival_time\":null,\"requested_departure_time\":\"08:00\",\"is_location_shared\":false}\n\nInput: Vyttila to Tripunithura\nOutput: {\"destination_place\":\"Tripunithura\",\"destination_is_station\":true,\"origin_place\":\"Vyttila\",\"origin_is_station\":true,\"passengers\":1,\"requested_arrival_time\":null,\"is_location_shared\":false}"
+          },
+          "promptType": "define",
+          "text": "={{ $('Execute Workflow Trigger').first().json.userMessage }}\\n[Coordinates provided: {{ $('Execute Workflow Trigger').first().json.latitude ? 'Yes' : 'No' }}]"
+        },
+        "id": "22222222-2222-2222-2222-222222222222",
+        "name": "Extract Intent",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          224,
+          -64
+        ]
+      },
+      {
+        "parameters": {
+          "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+          "options": {}
+        },
+        "id": "33333333-3333-3333-3333-333333333333",
+        "name": "NVIDIA Chat Model",
+        "type": "@n8n/n8n-nodes-langchain.lmChatNvidia",
+        "typeVersion": 1,
+        "position": [
+          304,
+          160
+        ],
+        "credentials": {
+          "nvidiaApi": {
+            "id": "TbaTz8LXFvQujHk2",
+            "name": "NVIDIA Nemotron account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const raw = $input.item.json.output ?? $input.item.json.text ?? $input.item.json.message ?? '';\nconst cleaned = String(raw).replace(/```json/gi, '').replace(/```/g, '').trim();\nlet intent;\ntry { intent = JSON.parse(cleaned); } catch(e) { intent = { destination_place: null, destination_is_station: false, origin_place: null, origin_is_station: false, passengers: 1, requested_arrival_time: null, is_location_shared: false, parse_error: true }; }\nreturn [{ json: intent }];"
+        },
+        "id": "44444444-4444-4444-4444-444444444444",
+        "name": "Parse Intent",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          576,
+          -64
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $node[\"Parse Intent\"].json.destination_is_station }}",
+                "operator": {
+                  "operation": "false",
+                  "singleValue": true,
+                  "type": "boolean"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            }
+          },
+          "options": {}
+        },
+        "id": "55555555-5555-5555-5555-555555555555",
+        "name": "Check Destination Type",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1696,
+          -64
+        ]
+      },
+      {
+        "parameters": {
+          "url": "=https://nominatim.openstreetmap.org/search?q={{ encodeURIComponent($node[\"Parse Intent\"].json.destination_place + \" Kochi\") }}&format=json&limit=1&countrycodes=in",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "MetroMind/1.0"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "66666666-6666-6666-6666-666666666666",
+        "name": "Resolve Destination",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          1920,
+          -128
+        ],
+        "alwaysOutputData": true,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "url": "http://mindmetroapi.midhunapi.me/gtfs-data",
+          "options": {}
+        },
+        "id": "77777777-7777-7777-7777-777777777777",
+        "name": "Load GTFS",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          2592,
+          -64
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const gtfs = $('Load GTFS').first().json;\nconst intent = $('Parse Intent').first().json;\nconst pre = $('Execute Workflow Trigger').first().json;\n\nconst stations = gtfs.stations;\nconst line = gtfs.line;\nconst schedule = gtfs.schedule;\nconst fares = gtfs.fares;\n\nconst userLat = pre.latitude ? parseFloat(pre.latitude) : null;\nconst userLon = pre.longitude ? parseFloat(pre.longitude) : null;\nconst passengers = intent.passengers ?? 1;\n\n// --- IST TIMEZONE FIX ---\nconst utcNow = new Date();\nconst now = new Date(utcNow.getTime() + (330 * 60000)); // UTC + 5:30 in milliseconds\n\nfunction haversine(lat1, lon1, lat2, lon2) {\n  const R = 6371;\n  const dLat = (lat2 - lat1) * Math.PI / 180;\n  const dLon = (lon2 - lon1) * Math.PI / 180;\n  const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2)**2;\n  return R * 2 * Math.asin(Math.sqrt(a));\n}\n\nfunction closestStation(lat, lon) {\n  let closest = null;\n  let minDist = Infinity;\n  for (const [name, data] of Object.entries(stations)) {\n    const dist = haversine(lat, lon, data.lat, data.lon);\n    if (dist < minDist) {\n      minDist = dist;\n      closest = { name, ...data, distKm: dist.toFixed(2) };\n    }\n  }\n  return closest;\n}\n\nfunction getRoute(from, to) {\n  const fromIdx = line.indexOf(from);\n  const toIdx = line.indexOf(to);\n  if (fromIdx === -1 || toIdx === -1) return null;\n  const direction = fromIdx < toIdx ? \"Tripunithura\" : \"Aluva\";\n  const stops = fromIdx < toIdx ? line.slice(fromIdx, toIdx + 1) : line.slice(toIdx, fromIdx + 1).reverse();\n  return { stops, numStops: stops.length - 1, direction, travelTimeMin: (stops.length - 1) * 2 };\n}\n\nfunction getNextTrains(stationName, count = 3, requestedDepartureTimeStr = null) {\n  const station = stations[stationName];\n  if (!station) return { next: [], last: null };\n  \n  let targetMins;\n  if (requestedDepartureTimeStr) {\n    const parts = requestedDepartureTimeStr.split(\":\");\n    targetMins = parseInt(parts[0]) * 60 + parseInt(parts[1]);\n  } else {\n    // using IST now\n    targetMins = now.getUTCHours() * 60 + now.getUTCMinutes();\n  }\n\n  const entries = (schedule[station.id] || []).map(t => {\n    const parts = t.time.split(\":\");\n    return { ...t, totalMins: parseInt(parts[0]) * 60 + parseInt(parts[1]) };\n  }).sort((a, b) => a.totalMins - b.totalMins);\n  \n  const upcoming = entries.filter(t => t.totalMins >= targetMins);\n  const last = entries[entries.length - 1];\n  return { next: upcoming.slice(0, count).map(t => t.time.slice(0, 5)), last: last ? last.time.slice(0, 5) : null };\n}\n\nfunction getLeaveBy(trainTime, walkMins = 7) {\n  if (!trainTime) return null;\n  const [h, m] = trainTime.split(\":\").map(Number);\n  const total = h * 60 + m - walkMins;\n  if (total < 0) return \"00:00\"; // fallback\n  return `${Math.floor(total/60)}:${String(total%60).padStart(2,\"0\")}`;\n}\n\nfunction getFare(from, to, pax) {\n  const fromData = stations[from];\n  const toData = stations[to];\n  if (!fromData || !toData) return 0;\n  const key = `${fromData.zone}_${toData.zone}`;\n  if (fares[key]) return fares[key] * pax;\n  const dist = haversine(fromData.lat, fromData.lon, toData.lat, toData.lon);\n  const base = dist <= 2 ? 10 : dist <= 5 ? 20 : dist <= 10 ? 30 : dist <= 15 ? 40 : dist <= 20 ? 50 : 60;\n  return base * pax;\n}\n\nconst hasLocation = userLat !== null && !isNaN(userLat) && userLon !== null && !isNaN(userLon);\nif (!hasLocation && !intent.origin_place) {\n  return [{ json: { error: \"no_location\" } }];\n}\n\nif (!intent.destination_place || intent.parse_error) {\n  return [{ json: { error: \"parse_error\" } }];\n}\n\nlet entryStation;\nlet originLat = userLat, originLon = userLon;\n\nif (intent.origin_is_station && intent.origin_place && stations[intent.origin_place]) {\n  entryStation = { name: intent.origin_place, ...stations[intent.origin_place] };\n  originLat = entryStation.lat;\n  originLon = entryStation.lon;\n} else if (intent.origin_place) {\n  let originNominatim = null;\n  try { originNominatim = $('Resolve Origin').first().json; } catch(e) {}\n  \n  if (originNominatim && originNominatim.lat) {\n    originLat = parseFloat(originNominatim.lat);\n    originLon = parseFloat(originNominatim.lon);\n  } else {\n    try { \n      const photon = $('Fallback Origin').first().json; \n      if (photon && photon.features && photon.features.length > 0) {\n        const coords = photon.features[0].geometry.coordinates;\n        originLat = coords[1];\n        originLon = coords[0];\n      }\n    } catch(e) {}\n  }\n  \n  if (originLat && originLon) {\n    entryStation = closestStation(originLat, originLon);\n  } else {\n    return [{ json: { error: \"no_location\" } }];\n  }\n} else {\n  // Use GPS\n  if (originLat && originLon) {\n    entryStation = closestStation(originLat, originLon);\n  } else {\n    return [{ json: { error: \"no_location\" } }];\n  }\n}\n\nlet exitStation;\nlet destLat, destLon, destLabel;\n\nif (intent.destination_is_station) {\n  exitStation = { name: intent.destination_place, ...stations[intent.destination_place] };\n  destLat = exitStation.lat;\n  destLon = exitStation.lon;\n  destLabel = intent.destination_place + \" Metro Station Kochi\";\n} else {\n  let nominatim = null;\n  try { nominatim = $('Resolve Destination').first().json; } catch(e) {}\n  \n  if (nominatim && nominatim.lat) {\n    destLat = parseFloat(nominatim.lat);\n    destLon = parseFloat(nominatim.lon);\n  } else {\n    try { \n      const photon = $('Fallback Destination').first().json; \n      if (photon && photon.features && photon.features.length > 0) {\n        const coords = photon.features[0].geometry.coordinates;\n        destLat = coords[1];\n        destLon = coords[0];\n      }\n    } catch(e) {}\n  }\n  \n  if (destLat && destLon) {\n    exitStation = closestStation(destLat, destLon);\n    destLabel = intent.destination_place + \" Kochi\";\n  } else {\n    return [{ json: { error: \"dest_not_found\" } }];\n  }\n}\n\nif (!entryStation || !exitStation) {\n  return [{ json: { error: \"station_not_found\" } }];\n}\n\nif (entryStation.name === exitStation.name) {\n  return [{ json: { error: \"same_station\", entryStation: entryStation.name } }];\n}\n\nconst route = getRoute(entryStation.name, exitStation.name);\nconst { next: nextTrains, last: lastTrain } = getNextTrains(entryStation.name, 3, intent.requested_departure_time);\n\n// CHECK IF METRO IS CLOSED\nif (nextTrains.length === 0 && !intent.requested_departure_time) {\n  return [{ json: { error: \"metro_closed\" } }];\n}\n\nconst leaveBy = getLeaveBy(nextTrains[0]);\nconst fare = getFare(entryStation.name, exitStation.name, passengers);\n\nconst originSegment = originLat && originLon ? `${originLat},${originLon}` : encodeURIComponent((intent.origin_place ?? entryStation.name) + \" Kochi\");\nconst mapsUrl = `https://www.google.com/maps/dir/${originSegment}/${encodeURIComponent(entryStation.name + \" Metro Station Kochi\")}/${encodeURIComponent(exitStation.name + \" Metro Station Kochi\")}/${encodeURIComponent(destLabel)}`;\n\nreturn [{ json: { entryStation: entryStation.name, exitStation: exitStation.name, entryLat: entryStation.lat, entryLon: entryStation.lon, route, nextTrains, lastTrain, leaveBy, fare, passengers, mapsUrl, travelTimeMin: route?.travelTimeMin ?? 0, numStops: route?.numStops ?? 0, error: null } }];"
+        },
+        "id": "88888888-8888-8888-8888-888888888888",
+        "name": "Process Query",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2816,
+          -64
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $node[\"Process Query\"].json.error }}",
+                "operator": {
+                  "operation": "empty",
+                  "singleValue": true,
+                  "type": "string"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            }
+          },
+          "options": {}
+        },
+        "id": "99999999-9999-9999-9999-999999999999",
+        "name": "Check Error",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          3040,
+          -64
+        ]
+      },
+      {
+        "parameters": {
+          "url": "=https://api.openweathermap.org/data/2.5/weather?lat={{ $node[\"Process Query\"].json.entryLat }}&lon={{ $node[\"Process Query\"].json.entryLon }}&appid=b2cb0dd274df5b5fc1aa9e7ec0de8d23&units=metric",
+          "options": {}
+        },
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "name": "Get Weather",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          3264,
+          -128
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const q = $('Process Query').first().json;\n\nif (q.error === \"no_location\") {\n  return [{ json: { replyMessage: \"\ud83d\udccd Please share your live location or tell me which station you're starting from!\\n\\nExample: _Aluva to Lulu Mall, 2 people_\" } }];\n}\n\nif (q.error === \"parse_error\") {\n  return [{ json: { replyMessage: \"Sorry, I didn't understand that \ud83d\ude05\\n\\nTry: _Vyttila to Lulu Mall, 2 people_\\nOr share your location and tell me where you want to go!\" } }];\n}\n\nif (q.error === \"dest_not_found\") {\n  return [{ json: { replyMessage: \"Sorry, I couldn't find that destination on the map \ud83d\uddfa\ufe0f\\n\\nPlease try being a bit more specific (e.g. adding 'Kochi' or a landmark)!\" } }];\n}\n\nif (q.error === \"station_not_found\") {\n  return [{ json: { replyMessage: \"Sorry, I couldn't find a metro station near that location. \ud83d\ude87\" } }];\n}\n\nif (q.error === \"same_station\") {\n  return [{ json: { replyMessage: \"\ud83d\udccd You are already at \" + q.entryStation + \" station! You don't need a metro for this trip.\" } }];\n}\n\nif (q.error === \"metro_closed\") {\n  return [{ json: { replyMessage: \"\ud83c\udf19 The metro is currently closed (trains run from 6:00 AM to 11:20 PM). What time do you plan to travel tomorrow so I can find the right trains for you?\" } }];\n}\n\nlet weatherLine = \"\";\ntry {\n  const w = $('Get Weather').first().json;\n  const condition = w?.weather?.[0]?.main?.toLowerCase() ?? \"\";\n  if (condition.includes(\"rain\") || condition.includes(\"drizzle\") || condition.includes(\"thunder\")) {\n    weatherLine = `\\n\ud83c\udf27 *Rain alert* \u2014 ${w.weather[0].description}. Add buffer time for walking.\\n`;\n  }\n} catch(e) {}\n\nconst lastTrainWarn = q.lastTrain ? `\u26a0\ufe0f Last train: ${q.lastTrain}\\n` : \"\";\nconst nextTrainDisplay = q.nextTrains?.[0] ?? \"No trains available\";\nconst leaveByDisplay = q.leaveBy ?? \"N/A\";\n\nconst reply = `\ud83d\ude87 *MetroMind Trip Plan*\n\n\ud83d\udccd ${q.entryStation} \u2192 ${q.exitStation} (Green Line)\n\ud83d\udd59 Next train: ${nextTrainDisplay} (leave by ${leaveByDisplay})\n\u23f1 ${q.travelTimeMin} min | ${q.numStops} stops\n${lastTrainWarn}${weatherLine}\n\ud83d\uddfa Full journey map:\n${q.mapsUrl}\n\n_Powered by MetroMind \u00d7 KMRL Open Data_`;\n\nreturn [{ json: { replyMessage: reply } }];"
+        },
+        "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "name": "Format Reply",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3936,
+          -64
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://ntfy.sh/metromind",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Title",
+                "value": "New MetroMind Trip"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/plain"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "string",
+          "body": "={{ $node[\"Process Query\"].json.entryStation }} \u2192 {{ $node[\"Process Query\"].json.exitStation }} | \u20b9{{ $node[\"Process Query\"].json.fare }} | {{ $node[\"Process Query\"].json.nextTrains[0] }}",
+          "options": {}
+        },
+        "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "name": "Notify ntfy",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          3488,
+          -128
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+          },
+          "sheetName": {
+            "__rl": true,
+            "mode": "list",
+            "value": "Sheet1"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Fare": "={{ $node[\"Process Query\"].json.fare }}",
+              "From": "={{ $node[\"Process Query\"].json.entryStation }}",
+              "Passengers": "={{ $node[\"Process Query\"].json.passengers }}",
+              "Phone": "={{ $('Execute Workflow Trigger').first().json.phoneNumber }}",
+              "Timestamp": "={{ $now.toISO() }}",
+              "To": "={{ $node[\"Process Query\"].json.exitStation }}"
+            }
+          },
+          "options": {}
+        },
+        "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        "name": "Log Query",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.5,
+        "position": [
+          3712,
+          -128
+        ],
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "VhzA5rRJf7lHMDpR",
+            "name": "Google Sheets account"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $node[\"Parse Intent\"].json.origin_is_station }}",
+                "operator": {
+                  "operation": "false",
+                  "singleValue": true,
+                  "type": "boolean"
+                },
+                "id": "condition-1784349296349-30aooi9xk"
+              },
+              {
+                "leftValue": "={{ !!$node[\"Parse Intent\"].json.origin_place }}",
+                "operator": {
+                  "operation": "true",
+                  "singleValue": true,
+                  "type": "boolean"
+                },
+                "id": "condition-1784349296350-ro84fgfpw"
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            }
+          },
+          "options": {}
+        },
+        "id": "052beaaf-21e5-4d76-987e-74f86e792682",
+        "name": "Check Origin Type",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          800,
+          -64
+        ]
+      },
+      {
+        "parameters": {
+          "url": "=https://nominatim.openstreetmap.org/search?q={{ encodeURIComponent($node[\"Parse Intent\"].json.origin_place + \" Kerala\") }}&format=json&limit=1&countrycodes=in",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "MetroMind/1.0"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "ec03acf3-7daf-43e2-beb5-6be3d3dce672",
+        "name": "Resolve Origin",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          1024,
+          -128
+        ],
+        "alwaysOutputData": true,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ Object.keys($json).length > 0 }}",
+                "operator": {
+                  "operation": "true",
+                  "singleValue": true,
+                  "type": "boolean"
+                },
+                "id": "condition-1784350688181-472gxr3mx"
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            }
+          },
+          "options": {}
+        },
+        "id": "2a0955c3-db7f-4c69-9c05-fa7f660c280f",
+        "name": "Check Origin Resolved",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1248,
+          -128
+        ]
+      },
+      {
+        "parameters": {
+          "url": "=https://photon.komoot.io/api/?q={{ encodeURIComponent($node[\"Parse Intent\"].json.origin_place + \" Kerala\") }}&limit=1",
+          "options": {}
+        },
+        "id": "551e4f11-4020-4642-abcd-b2b5ec7fbc3e",
+        "name": "Fallback Origin",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          1472,
+          -208
+        ],
+        "alwaysOutputData": true,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ Object.keys($json).length > 0 }}",
+                "operator": {
+                  "operation": "true",
+                  "singleValue": true,
+                  "type": "boolean"
+                },
+                "id": "condition-1784350688181-rl5wpbpsw"
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            }
+          },
+          "options": {}
+        },
+        "id": "08456566-9fd0-47da-bbcf-8b6bbe6b8cf2",
+        "name": "Check Dest Resolved",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          2144,
+          -128
+        ]
+      },
+      {
+        "parameters": {
+          "url": "=https://photon.komoot.io/api/?q={{ encodeURIComponent($node[\"Parse Intent\"].json.destination_place + \" kochi\") }}&limit=1",
+          "options": {}
+        },
+        "id": "911970ee-fe11-4bc9-b048-e4f8c508cc88",
+        "name": "Fallback Destination",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          2368,
+          -208
+        ],
+        "alwaysOutputData": true,
+        "onError": "continueRegularOutput"
+      }
+    ],
+    "connections": {
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Extract Intent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Extract Intent": {
+        "main": [
+          [
+            {
+              "node": "Parse Intent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Destination Type": {
+        "main": [
+          [
+            {
+              "node": "Resolve Destination",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Load GTFS",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Load GTFS": {
+        "main": [
+          [
+            {
+              "node": "Process Query",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Process Query": {
+        "main": [
+          [
+            {
+              "node": "Check Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Error": {
+        "main": [
+          [
+            {
+              "node": "Get Weather",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Format Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "NVIDIA Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Extract Intent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Weather": {
+        "main": [
+          [
+            {
+              "node": "Notify ntfy",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Notify ntfy": {
+        "main": [
+          [
+            {
+              "node": "Log Query",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Query": {
+        "main": [
+          [
+            {
+              "node": "Format Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Intent": {
+        "main": [
+          [
+            {
+              "node": "Check Origin Type",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Origin Type": {
+        "main": [
+          [
+            {
+              "node": "Resolve Origin",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Check Destination Type",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Check Destination Type",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Resolve Origin": {
+        "main": [
+          [
+            {
+              "node": "Check Origin Resolved",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Origin Resolved": {
+        "main": [
+          [
+            {
+              "node": "Check Destination Type",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Fallback Origin",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fallback Origin": {
+        "main": [
+          [
+            {
+              "node": "Check Destination Type",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Resolve Destination": {
+        "main": [
+          [
+            {
+              "node": "Check Dest Resolved",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Dest Resolved": {
+        "main": [
+          [
+            {
+              "node": "Load GTFS",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Fallback Destination",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fallback Destination": {
+        "main": [
+          [
+            {
+              "node": "Load GTFS",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveManualExecutions": true,
+      "saveExecutionProgress": true,
+      "binaryMode": "separate"
+    },
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "8f77befa-61fe-44c4-80ef-40b80a47bb86",
+    "activeVersionId": "8f77befa-61fe-44c4-80ef-40b80a47bb86",
+    "versionCounter": 51,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-17T17:28:50.832Z",
+        "createdAt": "2026-07-17T17:28:50.832Z",
+        "role": "workflow:owner",
+        "workflowId": "8BzKbQxyYXVwtX0K",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-14T18:35:57.000Z",
+    "createdAt": "2026-07-14T15:01:29.163Z",
+    "id": "PmokXWbgkiQiHKON",
+    "name": "My workflow",
+    "description": null,
+    "active": false,
+    "isArchived": true,
+    "nodes": [
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          -336,
+          48
+        ],
+        "id": "96f2546b-46e9-49e0-876a-23f370db2165",
+        "name": "When clicking \u2018Execute workflow\u2019"
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+        "typeVersion": 1.4,
+        "position": [
+          -128,
+          48
+        ],
+        "id": "da0cc3de-ca45-46b6-ad56-cccc537fc3ae",
+        "name": "When chat message received",
+        "webhookId": "58c7ea50-61f4-4b2a-9002-5e20f2aaf308"
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          80,
+          48
+        ],
+        "id": "404a4f96-ea75-41ff-83a0-54dcf53c1d4a",
+        "name": "AI Agent"
+      },
+      {
+        "parameters": {
+          "model": "openai/gpt-oss-20b:free",
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+        "typeVersion": 1,
+        "position": [
+          -64,
+          256
+        ],
+        "id": "81efe028-317f-4b9c-b869-98091ff789a8",
+        "name": "OpenRouter Chat Model",
+        "credentials": {
+          "openRouterApi": {
+            "id": "BUbKAg59c69QfsoD",
+            "name": "OpenRouter account"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "When clicking \u2018Execute workflow\u2019": {
+        "main": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "When chat message received": {
+        "main": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenRouter Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": true
+    },
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "7807728f-bed9-4f57-990c-4d386ce8d3f2",
+    "activeVersionId": null,
+    "versionCounter": 12,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-14T15:01:29.176Z",
+        "createdAt": "2026-07-14T15:01:29.176Z",
+        "role": "workflow:owner",
+        "workflowId": "PmokXWbgkiQiHKON",
+        "projectId": "sJbRQ0D9Xds02Xje"
+      }
+    ],
+    "tags": []
+  },
+  {
+    "updatedAt": "2026-07-14T18:26:52.513Z",
+    "createdAt": "2026-07-14T18:26:43.801Z",
+    "id": "3fb5DNpS5Yu5wdDC",
+    "name": "Global Error Catch-All",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "id": "error-trigger-1",
+        "name": "Error Trigger",
+        "parameters": {},
+        "position": [
+          250,
+          300
+        ],
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1
+      },
+      {
+        "id": "ntfy-error-alert",
+        "name": "Send Global Error Alert",
+        "parameters": {
+          "body": "={{ 'Workflow: ' + $json.workflow.name + '\\nError: ' + $json.execution.error.message }}",
+          "contentType": "raw",
+          "jsonHeaders": "{\n  \"Title\": \"n8n Global Error \u26a0\ufe0f\",\n  \"Priority\": \"high\",\n  \"Tags\": \"x\"\n}",
+          "method": "POST",
+          "rawContentType": "text/plain",
+          "sendBody": true,
+          "sendHeaders": true,
+          "specifyHeaders": "json",
+          "url": "https://ntfy.sh/midhun-anime-alerts"
+        },
+        "position": [
+          450,
+          300
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4
+      }
+    ],
+    "connections": {
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Send Global Error Alert",
+              "type": "main"
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveManualExecutions": true,
+      "saveExecutionProgress": true
+    },
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": null,
+    "versionId": "23c0a4ec-c2d4-4309-95db-5edd38ca63d3",
+    "activeVersionId": "23c0a4ec-c2d4-4309-95db-5edd38ca63d3",
+    "versionCounter": 1,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-14T18:26:43.804Z",
+        "createdAt": "2026-07-14T18:26:43.804Z",
+        "role": "workflow:owner",
+        "workflowId": "3fb5DNpS5Yu5wdDC",
+        "projectId": "sJbRQ0D9Xds02Xje"
+      }
+    ],
+    "tags": []
+  }
+]

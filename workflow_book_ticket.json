@@ -1,0 +1,301 @@
+{
+  "success": true,
+  "data": {
+    "updatedAt": "2026-07-18T10:05:54.353Z",
+    "createdAt": "2026-07-16T18:00:22.084Z",
+    "id": "CHyJtV2PScQ7aZ6B",
+    "name": "Tool: Book Kochi Metro Ticket",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://mindmetroapi.midhunapi.me/book",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ url: $json.url, origin: $json.origin, destination: $json.destination, passengers: $json.passengers }) }}",
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "id": "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b",
+        "maxTries": 2,
+        "name": "Book Kochi Metro",
+        "position": [
+          1120,
+          304
+        ],
+        "retryOnFail": true,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "waitBetweenTries": 3000,
+        "onError": "continueErrorOutput",
+        "notes": "Calls the Kochi Metro booking API.\nPOST https://mindmetroapi.midhunapi.me/book\nRetries once on failure (3s delay). Timeout: 30s."
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "success-check-condition",
+                "leftValue": "={{ $json.success }}",
+                "operator": {
+                  "operation": "equals",
+                  "singleValue": true,
+                  "type": "boolean"
+                },
+                "rightValue": true
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 1
+            }
+          },
+          "options": {}
+        },
+        "id": "f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c",
+        "name": "Booking Successful?",
+        "position": [
+          1344,
+          208
+        ],
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "notes": "Checks if the booking API returned success: true."
+      },
+      {
+        "id": "1e5f69cc-e8cb-44dc-aede-271349bfbaba",
+        "name": "When Executed by Another Workflow",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          224,
+          400
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "url",
+                "type": "string"
+              },
+              {
+                "name": "origin",
+                "type": "string"
+              },
+              {
+                "name": "destination",
+                "type": "string"
+              },
+              {
+                "name": "passengers",
+                "type": "number"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "2042befc-eb64-4912-9e09-c696a1265748",
+        "name": "Return Booking Result",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          1568,
+          304
+        ],
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "success",
+                "name": "success",
+                "type": "boolean",
+                "value": "={{ $json.success }}"
+              },
+              {
+                "id": "payment_url",
+                "name": "payment_url",
+                "type": "string",
+                "value": "={{ $json.payment_url || $json.url || $json.deeplink || '' }}"
+              },
+              {
+                "id": "fare",
+                "name": "fare",
+                "type": "string",
+                "value": "={{ $json.fare || '' }}"
+              },
+              {
+                "id": "error",
+                "name": "error",
+                "type": "string",
+                "value": "={{ $json.error || $json.message || '' }}"
+              },
+              {
+                "id": "origin",
+                "name": "origin",
+                "type": "string",
+                "value": "={{ $('When Executed by Another Workflow').first().json.origin }}"
+              },
+              {
+                "id": "destination",
+                "name": "destination",
+                "type": "string",
+                "value": "={{ $('When Executed by Another Workflow').first().json.destination }}"
+              },
+              {
+                "id": "passengers",
+                "name": "passengers",
+                "type": "number",
+                "value": "={{ $('When Executed by Another Workflow').first().json.passengers }}"
+              }
+            ]
+          },
+          "mode": "manual"
+        }
+      },
+      {
+        "id": "9de78c9c-ffad-4c24-bef3-b1582822900a",
+        "name": "Return Error",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          1568,
+          500
+        ],
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "success",
+                "name": "success",
+                "type": "boolean",
+                "value": false
+              },
+              {
+                "id": "error",
+                "name": "error",
+                "type": "string",
+                "value": "={{ $json.error || $json.message || $json.statusMessage || 'The booking service is temporarily unavailable' }}"
+              },
+              {
+                "id": "origin",
+                "name": "origin",
+                "type": "string",
+                "value": "={{ $('When Executed by Another Workflow').first().json.origin }}"
+              },
+              {
+                "id": "destination",
+                "name": "destination",
+                "type": "string",
+                "value": "={{ $('When Executed by Another Workflow').first().json.destination }}"
+              },
+              {
+                "id": "passengers",
+                "name": "passengers",
+                "type": "number",
+                "value": "={{ $('When Executed by Another Workflow').first().json.passengers }}"
+              }
+            ]
+          },
+          "mode": "manual"
+        }
+      }
+    ],
+    "connections": {
+      "Book Kochi Metro": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "Booking Successful?",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "node": "Return Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "When Executed by Another Workflow": {
+        "main": [
+          [
+            {
+              "node": "Book Kochi Metro",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Booking Successful?": {
+        "main": [
+          [
+            {
+              "node": "Return Booking Result",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Return Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveManualExecutions": true,
+      "binaryMode": "separate",
+      "availableInMCP": true
+    },
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "388c3c3f-97a2-4810-9084-8109edaaee9a",
+    "activeVersionId": "388c3c3f-97a2-4810-9084-8109edaaee9a",
+    "versionCounter": 13,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "shared": [
+      {
+        "updatedAt": "2026-07-16T18:00:22.093Z",
+        "createdAt": "2026-07-16T18:00:22.093Z",
+        "role": "workflow:owner",
+        "workflowId": "CHyJtV2PScQ7aZ6B",
+        "projectId": "sJbRQ0D9Xds02Xje",
+        "project": {
+          "updatedAt": "2026-07-13T09:24:08.945Z",
+          "createdAt": "2026-07-13T09:07:47.549Z",
+          "id": "sJbRQ0D9Xds02Xje",
+          "name": "Midhum P M <midhun.titan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "2b388edf-817e-4ea0-8337-b81ca8658893"
+        }
+      }
+    ],
+    "tags": []
+  }
+}
