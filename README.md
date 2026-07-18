@@ -8,11 +8,28 @@ Users can plan complex trips, share live GPS locations, book real tickets, save 
 
 ## ✨ Key Features
 
-- 🗺️ **Intelligent Route Planning**: Calculates the fastest route, travel times, fares, and the exact next train departure times using static GTFS data. Users can share their live WhatsApp location to instantly find the closest station.
-- 🎫 **Live Ticket Booking**: Automates the KMRL ticket booking portal via a Selenium-powered Python backend. It securely negotiates the booking flow and returns a direct payment link to the user on WhatsApp.
-- ⏰ **Smart Commute Reminders**: Users can ask the agent to "save my commute" (e.g., *Aluva to MG Road every weekday at 9:00 AM*). A scheduled engine continuously checks these profiles and sends a proactive push notification to the user's WhatsApp 15 minutes before departure, complete with live weather and train times.
-- 🌴 **Tourist Mode**: Generates highly personalized day-trip itineraries. Whether a user has a "half-day for shopping" or a "full-day for history", MetroMind calculates travel times between key Kochi attractions and builds a seamless travel schedule with Google Maps integration.
-- 🧠 **Agentic AI Brain**: Powered by advanced LLMs (like OpenRouter GPT-4 / NVIDIA Nemotron). The agent maintains conversational memory and autonomously decides which internal "Tools" to call based on the user's intent.
+### 🗺️ Intelligent Route Planning
+Calculates the fastest route, travel times, fares, and the exact next train departure times using static GTFS data. Users can share their live WhatsApp location to instantly find the closest station.
+<br>
+![Trip Planner Demo](assets/trip_planner_demo.png)
+
+### 🎫 Live Ticket Booking
+Automates the KMRL ticket booking portal via a Selenium-powered Python backend. It securely negotiates the booking flow and returns a direct payment link to the user on WhatsApp.
+<br>
+![Booking Demo](assets/booking_demo.png)
+
+### ⏰ Smart Commute Reminders
+Users can ask the agent to "save my commute" (e.g., *Aluva to MG Road every weekday at 9:00 AM*). A scheduled engine continuously checks these profiles and sends a proactive push notification to the user's WhatsApp 15 minutes before departure, complete with live weather and train times.
+<br>
+![Commute Demo](assets/commute_demo.png)
+
+### 🌴 Tourist Mode
+Generates highly personalized day-trip itineraries. Whether a user has a "half-day for shopping" or a "full-day for history", MetroMind calculates travel times between key Kochi attractions and builds a seamless travel schedule with Google Maps integration.
+<br>
+![Tourist Demo](assets/tourist_demo.png)
+
+### 🧠 Agentic AI Brain
+Powered by advanced LLMs (like OpenRouter GPT-4 / NVIDIA Nemotron). The agent maintains conversational memory and autonomously decides which internal "Tools" to call based on the user's intent.
 
 ---
 
@@ -26,18 +43,31 @@ The backend data engine and web-automation service.
 - **`booking.py`**: A headless Selenium script that programmatically navigates the official KMRL ticketing portal to reserve tickets on behalf of the user.
 - **`payment_extractor.py`**: Helper script to securely extract transaction IDs and payment links from the KMRL portal.
 - **`kmrl.json`**: The comprehensive dataset containing station coordinates, dynamic fare matrices, and the entire train schedule.
-- Includes a `Dockerfile` and `requirements.txt` for immediate deployment.
 
 ### 2. `n8n-workflows/`
 The orchestration layer. These JSON files can be imported directly into an n8n instance to instantly recreate the AI Agent.
-- **`workflow_whatsapp_agent_v2.json`**: The primary webhook entry point for Twilio. It normalizes incoming phone numbers, extracts GPS coordinates, and passes the context to the Brain.
-- **`workflow_whatsapp_brain_v2.json`**: The core LangChain AI Agent. It uses `Simple Memory` to remember conversation history and intelligently routes requests to the appropriate sub-workflow tools.
-- **Agent Tools:**
-  - `workflow_trip_planner_v2.json`: Handles distance calculations, Haversine formulas, and time math for route planning.
-  - `workflow_book_ticket_v2.json`: Interfaces with the Python FastAPI server to execute the Selenium booking script.
-  - `workflow_commute_manager_v2.json`: Saves and deletes user commute profiles in the global n8n static data state.
-  - `workflow_tourist_itinerary_v2.json`: Dynamically filters a database of Kochi attractions to build timed itineraries.
-- **`workflow_commute_reminder_v2.json`**: A standalone CRON-triggered workflow that runs every minute. It checks the global state for active commute profiles, calculates triggers, fetches live OpenWeather data, and pushes alerts via Twilio.
+
+#### WhatsApp Agent (Webhook Entry)
+The primary webhook entry point for Twilio. It normalizes incoming phone numbers, extracts GPS coordinates, and passes the context to the Brain.
+![WhatsApp Agent](assets/whatsapp_agent.png)
+
+#### AI Brain (LangChain)
+The core LangChain AI Agent. It uses `Simple Memory` to remember conversation history and intelligently routes requests to the appropriate sub-workflow tools.
+![Brain Agent](assets/brain_agent.png)
+
+#### Tool: Trip Planner
+Handles distance calculations, Haversine formulas, and time math for route planning.
+![Trip Planner](assets/trip_planner.png)
+
+#### Tool: Book Ticket
+Interfaces with the Python FastAPI server to execute the Selenium booking script.
+![Book Ticket](assets/book_ticket.png)
+
+#### Tool: Commute Manager
+Saves and deletes user commute profiles in the global n8n static data state.
+![Commute Manager](assets/commute_manager.png)
+
+*Additional workflows include the CRON-triggered Commute Reminder and the personalized Tourist Itinerary generator.*
 
 ### 3. `scripts-and-tests/`
 Utility scripts used for development, local testing, and patching workflows programmatically.

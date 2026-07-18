@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-18T20:28:31.503Z",
+  "updatedAt": "2026-07-18T20:53:31.728Z",
   "createdAt": "2026-07-18T19:32:18.233Z",
   "id": "TWtAE4ji8Pk6bjF6",
   "name": "Agent: WhatsApp Brain V2",
@@ -435,7 +435,7 @@
       "id": "e857a932-dd6f-4653-b7c9-0d301a4b47c5",
       "name": "Twilio WhatsApp Send",
       "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1.2,
+      "typeVersion": 1,
       "position": [
         2784,
         176
@@ -444,7 +444,7 @@
         "from": "={{ 'whatsapp:' + $('Execute Workflow Trigger').first().json.twilioFrom }}",
         "message": "={{ $json.outboundMessage }}",
         "operation": "send",
-        "resource": "message",
+        "resource": "sms",
         "to": "={{ 'whatsapp:' + $json.phoneNumber }}"
       },
       "credentials": {
@@ -652,9 +652,9 @@
   "meta": null,
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "aa5f641d-318a-48a9-b1ab-09843f9e4ddf",
-  "activeVersionId": "aa5f641d-318a-48a9-b1ab-09843f9e4ddf",
-  "versionCounter": 8,
+  "versionId": "13ec40f0-003e-48cd-a23b-67ee2f7e8234",
+  "activeVersionId": "13ec40f0-003e-48cd-a23b-67ee2f7e8234",
+  "versionCounter": 9,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "shared": [

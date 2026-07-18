@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-18T20:28:53.755Z",
+  "updatedAt": "2026-07-18T20:53:38.820Z",
   "createdAt": "2026-07-18T19:59:51.609Z",
   "id": "VgjULGieV3RIG7Q8",
   "name": "MetroMind Commute Reminder V2",
@@ -128,7 +128,7 @@
       "id": "79ba6c8f-c0eb-45a7-ae18-0a7d8f602fcd",
       "name": "Twilio WhatsApp Send",
       "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1.2,
+      "typeVersion": 1,
       "position": [
         1320,
         -80
@@ -137,7 +137,7 @@
         "from": "whatsapp:+14155238886",
         "message": "={{ $json.replyMessage }}",
         "operation": "send",
-        "resource": "message",
+        "resource": "sms",
         "to": "={{ 'whatsapp:' + $json.phoneNumber }}"
       },
       "credentials": {
@@ -236,9 +236,9 @@
   "meta": null,
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "108e5622-ffcc-4676-ab8c-35746b2b6b85",
-  "activeVersionId": "108e5622-ffcc-4676-ab8c-35746b2b6b85",
-  "versionCounter": 3,
+  "versionId": "b11b56e9-f42c-4f2e-b22d-21e6f4d18aa6",
+  "activeVersionId": "b11b56e9-f42c-4f2e-b22d-21e6f4d18aa6",
+  "versionCounter": 4,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "shared": [

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-18T20:26:41.918Z",
+  "updatedAt": "2026-07-18T20:53:24.346Z",
   "createdAt": "2026-07-18T19:32:31.254Z",
   "id": "E0of3uHP7u65TWBZ",
   "name": "MetroMind — WhatsApp Agent V2",
@@ -72,7 +72,7 @@
       "id": "83efc007-18cb-42e8-94be-d5e1a259d5d7",
       "name": "Twilio Thinking",
       "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1.2,
+      "typeVersion": 1,
       "position": [
         1104,
         656
@@ -81,7 +81,7 @@
         "from": "={{ 'whatsapp:' + $json.twilioFrom }}",
         "message": "🚇 *MetroMind is thinking...*",
         "operation": "send",
-        "resource": "message",
+        "resource": "sms",
         "to": "={{ 'whatsapp:' + $json.phoneNumber }}"
       },
       "credentials": {
@@ -128,9 +128,9 @@
   "meta": null,
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "091ee0b4-bbc7-4aae-a14b-527ba1a4f19d",
-  "activeVersionId": "091ee0b4-bbc7-4aae-a14b-527ba1a4f19d",
-  "versionCounter": 2,
+  "versionId": "7214d90e-aa4b-4fc9-a83b-10b7f70031b4",
+  "activeVersionId": "7214d90e-aa4b-4fc9-a83b-10b7f70031b4",
+  "versionCounter": 3,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "shared": [
