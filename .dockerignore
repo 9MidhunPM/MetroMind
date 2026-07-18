@@ -1,0 +1,26 @@
+# Ignore Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Ignore local configs and environments
+.env
+.git/
+.gitignore
+
+# Ignore local output/debugging directories
+screenshots/
+videos/
+traces/
+logs/
+
+# Ignore local test scripts and CLI not needed in production container
+test_*.py
+main.py
+n8n_workflow.json
+README.md
+Dockerfile
+.dockerignore
